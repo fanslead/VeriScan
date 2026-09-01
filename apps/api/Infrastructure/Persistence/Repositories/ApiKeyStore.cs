@@ -22,23 +22,57 @@ public sealed class ApiKeyStore(VeriScanDbContext dbContext) : IApiKeyStore
                 cancellationToken);
     }
 
-    public Task<ApplicationApiKey?> GetByPublicKeyIdAsync(
+    public Task<ApiKeyVerificationData?> GetVerificationDataAsync(
         string publicKeyId,
         CancellationToken cancellationToken)
     {
         return dbContext.ApplicationApiKeys
-            .Include(key => key.Application)
-            .SingleOrDefaultAsync(key => key.PublicKeyId == publicKeyId, cancellationToken);
+            .AsNoTracking()
+            .Where(key => key.PublicKeyId == publicKeyId && key.Application != null)
+            .Select(key => new ApiKeyVerificationData(
+                key.Id,
+                key.TenantId,
+                key.ApplicationId,
+                key.PublicKeyId,
+                key.SecretDigest,
+                key.PepperVersion,
+                key.ScopesText,
+                key.EnvironmentName,
+                key.Status,
+                key.NotBefore,
+                key.ExpiresAt,
+                key.Application!.Status))
+            .SingleOrDefaultAsync(cancellationToken);
     }
 
     public async Task<IReadOnlyList<ApplicationApiKey>> ListByApplicationAsync(
         Guid applicationId,
         CancellationToken cancellationToken)
     {
-        return await dbContext.ApplicationApiKeys
+        var keys = await dbContext.ApplicationApiKeys
+            .AsNoTracking()
             .Where(key => key.ApplicationId == applicationId)
             .OrderByDescending(key => key.CreatedAt)
             .ToListAsync(cancellationToken);
+        var lastUsedByKey = await dbContext.ModerationRequests
+            .AsNoTracking()
+            .Where(request => request.ApplicationId == applicationId)
+            .GroupBy(request => request.CreatedByApiKeyId)
+            .Select(group => new
+            {
+                KeyId = group.Key,
+                LastUsedAt = group.Max(request => request.SubmittedAt)
+            })
+            .ToDictionaryAsync(item => item.KeyId, item => item.LastUsedAt, cancellationToken);
+        foreach (var key in keys)
+        {
+            if (lastUsedByKey.TryGetValue(key.Id, out var lastUsedAt))
+            {
+                key.MarkUsed(lastUsedAt);
+            }
+        }
+
+        return keys;
     }
 
     public Task SaveChangesAsync(CancellationToken cancellationToken)

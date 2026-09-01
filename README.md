@@ -32,11 +32,14 @@ pnpm build
 
 ```bash
 ConnectionStrings__VeriScan='Host=127.0.0.1;Port=5432;Database=veriscan;Username=veriscan;Password=veriscan-local-postgres-change-me' \
+ConnectionStrings__Redis='127.0.0.1:6379' \
 Database__AutoMigrate=true \
 Security__ApiKey__Pepper='replace-with-at-least-32-bytes-local-only' \
 ASPNETCORE_URLS='http://127.0.0.1:5000' \
 dotnet run --project apps/api/Api
 ```
+
+API Key 身份使用进程内 L1 与 Redis L2 的短时混合缓存；撤销、轮换和应用状态变化会主动失效。Redis 未配置或暂时不可用时，鉴权会回源 PostgreSQL，不会因为缓存故障跳过密钥摘要、有效期、状态或应用状态校验。
 
 外部 AI 默认没有出站主机权限，因此不会因为数据库里出现任意 URL 就发起请求。启用前要显式设置允许主机和凭据引用；数据库只保存 `config://ProviderA`，明文通过服务端配置注入：
 

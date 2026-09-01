@@ -1,5 +1,6 @@
 using System.Text;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Hybrid;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using VeriScan.Application.Abstractions;
@@ -20,6 +21,22 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddDbContext<VeriScanDbContext>(options => options.UseNpgsql(
             connectionString,
             npgsql => npgsql.MigrationsAssembly(typeof(VeriScanDbContext).Assembly.FullName)));
+        var redisConnectionString = configuration.GetConnectionString("Redis");
+        if (!string.IsNullOrWhiteSpace(redisConnectionString))
+        {
+            services.AddStackExchangeRedisCache(options => options.Configuration = redisConnectionString);
+        }
+
+        services.AddHybridCache(options =>
+        {
+            options.MaximumKeyLength = 256;
+            options.MaximumPayloadBytes = 64 * 1024;
+            options.DefaultEntryOptions = new HybridCacheEntryOptions
+            {
+                Expiration = TimeSpan.FromMinutes(2),
+                LocalCacheExpiration = TimeSpan.FromSeconds(15)
+            };
+        });
         services.AddOptions<ApiKeyOptions>()
             .Bind(configuration.GetSection(ApiKeyOptions.SectionName))
             .ValidateDataAnnotations()
@@ -40,6 +57,9 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddScoped<IAiModelConfigurationStore, AiModelConfigurationStore>();
         services.AddScoped<IApiKeyMaterialGenerator, ApiKeyMaterialService>();
         services.AddScoped<IApiKeyVerifier, ApiKeyMaterialService>();
+        services.AddSingleton<HybridApiKeyCache>();
+        services.AddSingleton<IApiKeyCacheInvalidator>(serviceProvider =>
+            serviceProvider.GetRequiredService<HybridApiKeyCache>());
         services.AddScoped<IApiKeyPolicy, ApiKeyPolicy>();
         services.AddSingleton<IContentHashService, ContentHashService>();
         services.AddScoped<DatabaseInitializer>();

@@ -61,6 +61,15 @@ public sealed class ModerationApiTests : IClassFixture<ApiTestFactory>
         getRequest.Headers.Add("X-API-Key", key.ApiKey);
         var getResponse = await client.SendAsync(getRequest);
         Assert.Equal(HttpStatusCode.OK, getResponse.StatusCode);
+
+        using var keysRequest = new HttpRequestMessage(
+            HttpMethod.Get,
+            $"/api/admin/v1/applications/{application.Id}/api-keys");
+        AddAdminAuthorization(keysRequest);
+        var keysResponse = await client.SendAsync(keysRequest);
+        keysResponse.EnsureSuccessStatusCode();
+        var keys = await keysResponse.Content.ReadFromJsonAsync<ApiKeyListResponse>(JsonOptions);
+        Assert.NotNull(Assert.Single(keys!.Items).LastUsedAt);
     }
 
     [Fact]

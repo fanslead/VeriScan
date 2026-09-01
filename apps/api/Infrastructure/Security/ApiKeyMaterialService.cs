@@ -6,7 +6,10 @@ using VeriScan.Domain.Entities;
 
 namespace VeriScan.Infrastructure.Security;
 
-public sealed class ApiKeyMaterialService(IOptions<ApiKeyOptions> options, IApiKeyStore apiKeyStore)
+public sealed class ApiKeyMaterialService(
+    IOptions<ApiKeyOptions> options,
+    IApiKeyStore apiKeyStore,
+    HybridApiKeyCache apiKeyCache)
     : IApiKeyMaterialGenerator, IApiKeyVerifier
 {
     private static readonly char[] HexAlphabet = "0123456789abcdef".ToCharArray();
@@ -57,8 +60,11 @@ public sealed class ApiKeyMaterialService(IOptions<ApiKeyOptions> options, IApiK
             return null;
         }
 
-        var key = await apiKeyStore.GetByPublicKeyIdAsync(segments[2], cancellationToken);
-        if (key is null || !string.Equals(key.EnvironmentName, segments[1], StringComparison.Ordinal))
+        var key = await apiKeyCache.GetAsync(
+            segments[2],
+            async token => await apiKeyStore.GetVerificationDataAsync(segments[2], token),
+            cancellationToken);
+        if (key is null || !string.Equals(key.Environment, segments[1], StringComparison.Ordinal))
         {
             return null;
         }
@@ -70,17 +76,17 @@ public sealed class ApiKeyMaterialService(IOptions<ApiKeyOptions> options, IApiK
         }
 
         var now = DateTimeOffset.UtcNow;
-        if (!key.IsUsable(now) || key.Application is null || key.Application.Status != ApplicationStatus.Active)
+        if (key.Status != ApiKeyStatus.Active || key.NotBefore > now || key.ExpiresAt <= now ||
+            key.ApplicationStatus != ApplicationStatus.Active)
         {
             return null;
         }
 
-        key.MarkUsed(now);
         return new ApiKeyPrincipalData(
             key.TenantId,
             key.ApplicationId,
-            key.Id,
-            key.EnvironmentName,
+            key.KeyId,
+            key.Environment,
             key.ScopesText.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
     }
 

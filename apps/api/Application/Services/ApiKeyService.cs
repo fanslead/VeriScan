@@ -26,7 +26,8 @@ public sealed class ApiKeyService(
     IApplicationStore applicationStore,
     IApiKeyStore apiKeyStore,
     IApiKeyMaterialGenerator materialGenerator,
-    IApiKeyPolicy apiKeyPolicy) : IApiKeyService
+    IApiKeyPolicy apiKeyPolicy,
+    IApiKeyCacheInvalidator cacheInvalidator) : IApiKeyService
 {
     private static readonly StringComparer ScopeComparer = StringComparer.Ordinal;
 
@@ -79,6 +80,7 @@ public sealed class ApiKeyService(
 
         key.Revoke(DateTimeOffset.UtcNow);
         await apiKeyStore.SaveChangesAsync(cancellationToken);
+        await cacheInvalidator.InvalidateAsync(key.PublicKeyId, cancellationToken);
     }
 
     private async Task<ApiKeyCreatedResponse> CreateCoreAsync(
@@ -153,6 +155,10 @@ public sealed class ApiKeyService(
 
         await apiKeyStore.AddAsync(key, cancellationToken);
         await apiKeyStore.SaveChangesAsync(cancellationToken);
+        if (keyToRevoke is not null)
+        {
+            await cacheInvalidator.InvalidateAsync(keyToRevoke.PublicKeyId, cancellationToken);
+        }
 
         return new ApiKeyCreatedResponse(
             key.Id,

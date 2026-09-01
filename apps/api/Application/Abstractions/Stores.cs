@@ -19,12 +19,28 @@ public interface IApiKeyStore
 
     Task<ApplicationApiKey?> GetByIdAsync(Guid applicationId, Guid keyId, CancellationToken cancellationToken);
 
-    Task<ApplicationApiKey?> GetByPublicKeyIdAsync(string publicKeyId, CancellationToken cancellationToken);
+    Task<ApiKeyVerificationData?> GetVerificationDataAsync(
+        string publicKeyId,
+        CancellationToken cancellationToken);
 
     Task<IReadOnlyList<ApplicationApiKey>> ListByApplicationAsync(Guid applicationId, CancellationToken cancellationToken);
 
     Task SaveChangesAsync(CancellationToken cancellationToken);
 }
+
+public sealed record ApiKeyVerificationData(
+    Guid KeyId,
+    Guid TenantId,
+    Guid ApplicationId,
+    string PublicKeyId,
+    byte[] SecretDigest,
+    string PepperVersion,
+    string ScopesText,
+    string Environment,
+    ApiKeyStatus Status,
+    DateTimeOffset NotBefore,
+    DateTimeOffset ExpiresAt,
+    ApplicationStatus ApplicationStatus);
 
 public interface IModerationStore
 {

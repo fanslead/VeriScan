@@ -25,6 +25,15 @@ public interface IApiKeyVerifier
     Task<ApiKeyPrincipalData?> VerifyAsync(string presentedKey, CancellationToken cancellationToken);
 }
 
+public interface IApiKeyCacheInvalidator
+{
+    ValueTask InvalidateAsync(string publicKeyId, CancellationToken cancellationToken);
+
+    ValueTask InvalidateManyAsync(
+        IReadOnlyCollection<string> publicKeyIds,
+        CancellationToken cancellationToken);
+}
+
 public interface IApiKeyPolicy
 {
     int MaximumActiveKeys { get; }

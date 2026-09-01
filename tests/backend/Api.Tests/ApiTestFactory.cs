@@ -18,6 +18,16 @@ namespace VeriScan.Api.Tests;
 public sealed class ApiTestFactory : WebApplicationFactory<Program>
 {
     private readonly string databaseName = $"veriscan-tests-{Guid.CreateVersion7():N}";
+    private readonly Action<IServiceCollection>? additionalServices;
+
+    public ApiTestFactory()
+    {
+    }
+
+    internal ApiTestFactory(Action<IServiceCollection> additionalServices)
+    {
+        this.additionalServices = additionalServices;
+    }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
@@ -58,6 +68,7 @@ public sealed class ApiTestFactory : WebApplicationFactory<Program>
                         .AddRequirements(new AdminRoleRequirement())
                         .Build());
             });
+            additionalServices?.Invoke(services);
         });
     }
 

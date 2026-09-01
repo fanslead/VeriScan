@@ -18,7 +18,9 @@ public interface IApplicationService
         CancellationToken cancellationToken);
 }
 
-public sealed class ApplicationService(IApplicationStore applicationStore) : IApplicationService
+public sealed class ApplicationService(
+    IApplicationStore applicationStore,
+    IApiKeyCacheInvalidator cacheInvalidator) : IApplicationService
 {
     public async Task<ApplicationResponse> CreateAsync(
         CreateApplicationRequest request,
@@ -87,6 +89,12 @@ public sealed class ApplicationService(IApplicationStore applicationStore) : IAp
         }
 
         await applicationStore.SaveChangesAsync(cancellationToken);
+        if (request.Status.HasValue)
+        {
+            await cacheInvalidator.InvalidateManyAsync(
+                application.ApiKeys.Select(key => key.PublicKeyId).ToArray(),
+                cancellationToken);
+        }
 
         return ApplicationMappings.ToResponse(
             application,
