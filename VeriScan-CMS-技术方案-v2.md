@@ -1549,3 +1549,27 @@ Phase 0 必须先冻结 `reference_profile_id`，其中包含 API/Gateway 资源
 - [.NET 正则回溯与超时](https://learn.microsoft.com/en-us/dotnet/standard/base-types/backtracking-in-regular-expressions)
 - [pgvector HNSW、过滤与 iterative scan](https://github.com/pgvector/pgvector)
 - [ToolGood.Words NuGet](https://www.nuget.org/packages/ToolGood.Words)
+
+## 18. 当前实现状态（2026-09-01）
+
+本节记录仓库实现与方案的对应关系，不改变前述生产门禁。当前首发文本审核范围的仓库完成度约 **95%**；若把真实供应商、目标集群、数据标注、灾备和长稳门禁计入，整体约 **78%**。
+
+已落地并有自动化或真实容器证据：
+
+- 应用、独立 `X-API-Key`、一次性明文、摘要存储、scope、有效期、轮换、撤销和应用级统计；
+- `sync/async/auto` 批次、查询、取消、幂等指纹、重放/冲突、任务租约、失败退避和有界队列；
+- 关键词、受控正则、组合条件、文本规范化、原文证据 offset、草稿校验、不可变发布、复制、归档和应用绑定；
+- Chat Completions、Responses、Messages 三种外部协议，管理后台只写 API 密钥、加密存储、SSRF 边界、结构化 schema、超时、重试、熔断和保守 `review`；
+- API request、AI invocation、审核事实、Outbox、幂等消费、小时/日用量重建、审计查询和 OpenTelemetry；
+- 真实 Keycloak Authorization Code + PKCE、后台细粒度角色、认证前入口并发闸门，以及认证后的全局/应用/API Key 限流；
+- React 19 + Vite + pnpm 管理后台，覆盖应用、Key、规则、AI、记录、统计和审计。规则配置使用业务语言，常见格式通过模板选择，正则和执行安全限制收纳到高级区域；
+- PostgreSQL 原文静态保护、非 root 容器、迁移 Job、liveness/readiness 和本地完整 Compose。
+
+明确未完成或只能在目标环境完成：
+
+- 真实付费 Provider 的质量、费用、地域、留存、RPM/TPM 和 60 分钟以上长稳验收；
+- 独立标注评测集、分类阈值校准、95% 置信区间正确性 Gate 和漂移运营；
+- 双人审批、按比例灰度、Webhook 投递、生产 KMS/Vault、PITR/灾备、SBOM/许可证和目标集群发布；
+- RAG、图片/音频/视频、多模态、主动学习和多租户计费，继续按方案保持关闭或后续演进。
+
+最新本地验收与可复现命令见 `docs/ACCEPTANCE_REPORT.md`；启动、账号、接口和中英文使用说明见 `README.md` / `README.en.md`。

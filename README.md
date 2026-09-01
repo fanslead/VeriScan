@@ -4,7 +4,7 @@
 
 VeriScan 是面向业务系统的内容安全审核服务。它用版本化关键词规则完成低成本快筛，将未决内容路由到可配置的外部 AI，并通过应用级 API Key 暴露批量审核接口。系统只记录和返回 `pass`、`reject`、`review` 结果；`review` 由调用方自行接入人工流程，VeriScan 不内置二次人工复审。
 
-> 当前仓库仍处于本地开发与验证阶段。下方压测是单机短时结果，不是生产 SLA；尤其是并发 128 时已复现 API 进程异常退出，详见[压测结果](#压测结果2026-09-01)。
+> 当前仓库仍处于本地开发与验证阶段。下方压测是单机短时结果，不是生产 SLA。高并发异常已通过认证前入口并发闸门改为受控 `429`，但真实供应商、长稳压测和生产容量仍需在目标环境验证。
 
 ## 界面预览
 
@@ -14,9 +14,9 @@ VeriScan 是面向业务系统的内容安全审核服务。它用版本化关�
 
 ### 面向运营人员的规则编辑器
 
-![VeriScan 规则编辑器](docs/images/readme/rule-editor.jpg)
+![VeriScan 规则编辑器](docs/images/readme/rule-editor-v2.jpg)
 
-规则以“关键词、风险分类、命中后的处理方式”呈现，支持逐条添加和每行一个关键词的批量添加。运营人员无需理解 `black`、`suspicious`、`white`、内部分类代码或小数权重。
+规则以业务语言呈现，支持关键词、手机号/邮箱/链接等常见格式，以及“多个词同时出现”的组合条件。运营人员无需理解 `black`、`suspicious`、`white`、正则语法、内部分类代码或小数权重；技术安全限制只在高级区域按需展开。
 
 ### 外部 AI 配置
 
@@ -52,18 +52,24 @@ docs/                   实施、验收和界面文档
 
 前置环境：.NET SDK 10.0.400、Node.js 24+、pnpm 11+、Docker。
 
-### 1. 安装依赖并启动基础设施
+### 1. 使用 Docker 启动完整系统
 
 ```bash
 pnpm install
 cp infra/.env.example infra/.env
-# 只可用于本地开发；启动 PostgreSQL、Redis 和 Keycloak
-docker compose --env-file infra/.env -f infra/compose.yaml up -d --wait
+# 修改示例密码后，构建并启动 PostgreSQL、Redis、Keycloak、迁移任务、API 和管理后台
+docker compose --env-file infra/.env -f infra/compose.yaml up -d --build --wait
 ```
 
-请修改 `infra/.env` 中的示例密码。该 Compose 文件只启动基础设施，API 与前端按下面步骤运行。
+默认访问地址：
 
-### 2. 启动 API
+- 管理后台：`http://localhost:5173`
+- 审核 API：`http://localhost:5000`
+- Keycloak：`http://localhost:8080`
+
+本地初始化账号为 `veriscan-admin`，密码为 `veriscan-local-admin-change-me`。这两个值只用于本机首次运行；登录后应立即在 Keycloak 中修改密码，生产环境不得使用。
+
+### 2. 可选：分别启动 API 与前端
 
 首次部署先生成并安全保存一个固定的 AI 凭据加密主密钥：
 
@@ -79,6 +85,8 @@ ConnectionStrings__VeriScan='Host=127.0.0.1;Port=5432;Database=veriscan;Username
 ConnectionStrings__Redis='127.0.0.1:6379,password=veriscan-local-redis-change-me' \
 Database__AutoMigrate=true \
 Security__ApiKey__Pepper='replace-with-at-least-32-bytes-local-only' \
+Security__ModerationDigests__ContentPepper='replace-with-a-different-32-byte-content-pepper' \
+Security__ModerationDigests__IdempotencyPepper='replace-with-a-different-32-byte-idempotency-pepper' \
 Security__AiCredentials__MasterKey="$VERISCAN_AI_MASTER_KEY" \
 ExternalAi__AllowedHosts__0='api.openai.com' \
 ExternalAi__AllowedPorts__0=443 \
@@ -88,18 +96,18 @@ dotnet run --project apps/api/Api
 
 外部 AI 默认没有出站主机权限。启用自建或其他供应商端点时，必须把目标主机和端口加入 `ExternalAi__AllowedHosts` / `ExternalAi__AllowedPorts`，并同时使用部署侧网络策略约束出站流量。
 
-### 3. 启动管理后台
+启动管理后台：
 
 ```bash
 cp apps/admin/.env.example apps/admin/.env.local
 pnpm --dir apps/admin dev
 ```
 
-默认访问 `http://127.0.0.1:5173`。在 Keycloak 中创建本地用户并授予 `veriscan-admin` 角色后登录。Mock 数据仅在显式设置 `VITE_API_MODE=mock` 时启用，真实模式或 OIDC 配置缺失时不会自动降级。
+默认访问 `http://127.0.0.1:5173`。完整 Compose 会创建本地验收账号；分别启动时可复用同一 Keycloak realm，或创建用户并授予对应的 VeriScan 角色。Mock 数据仅在显式设置 `VITE_API_MODE=mock` 时启用，真实模式或 OIDC 配置缺失时不会自动降级。
 
 ## 配置流程
 
-1. 在“规则与词库”中创建草稿，以业务语言配置关键词和命中动作，校验后发布。
+1. 在“规则与词库”中创建草稿，以业务语言配置关键词、常见格式或组合条件及命中动作，校验后发布。
 2. 在“AI 配置”中选择协议，填写模型、服务地址和 API 密钥，完成连接测试后发布并启用。
 3. 在“应用”中创建调用方应用，绑定已发布规则版本，并创建具有 `moderation:submit` / `moderation:read` scope 的 API Key。
 4. 只在创建或轮换时复制 API Key 明文；服务端只保存摘要，之后无法找回原值。
@@ -128,12 +136,37 @@ curl --request POST 'http://127.0.0.1:5000/api/v1/moderation/batches' \
   }'
 ```
 
-约束：每批 1–100 条；单条文本最多 65,536 个字符；当前只支持 `plain_text`。同步请求返回 HTTP 200，`results[].decision` 为 `pass`、`reject` 或 `review`。建议为可重放请求提供唯一 `Idempotency-Key`。
+约束：同步模式每批 1–100 条，异步/自动模式每批 1–1000 条；单条文本最多 64 KiB UTF-8；当前只支持 `plain_text`。同步请求返回 HTTP 200；异步请求返回 HTTP 202、`Location` 与 `Retry-After`。`results[].decision` 为 `pass`、`reject` 或 `review`。建议为可重放请求提供唯一 `Idempotency-Key`。
+
+`mode` 可取 `sync`、`async` 或 `auto`。`auto` 会根据批量大小和预计 AI 调用数量选择同步或异步执行。可选的 `context.scene` 与 `context.authorType` 用于限定场景规则：
+
+```json
+{
+  "mode": "auto",
+  "items": [
+    {
+      "id": "comment-001",
+      "content": "待审核文本",
+      "contentType": "plain_text",
+      "language": "zh-CN",
+      "context": { "scene": "comment", "authorType": "member" }
+    }
+  ]
+}
+```
 
 ### 查询已记录批次
 
 ```bash
 curl 'http://127.0.0.1:5000/api/v1/moderation/batches/<request-id>' \
+  --header 'X-API-Key: <application-api-key>'
+```
+
+尚未开始执行的异步批次可取消：
+
+```bash
+curl --request POST \
+  'http://127.0.0.1:5000/api/v1/moderation/batches/<request-id>/cancel' \
   --header 'X-API-Key: <application-api-key>'
 ```
 
@@ -164,27 +197,18 @@ API Key 只能查询所属应用的记录。`/healthz` 是存活探针，`/ready
 
 该基线只测进程内规则求值，不包含 HTTP、数据库、鉴权、AI 或网络。
 
-### HTTP 稳定档位
+### 当前版本 HTTP 基线
 
-每个场景运行 3 次，表中为按吞吐取中位数的那次结果：
+以下是加入入口总并发保护后的隔离 Compose 实测，内容为单条可信硬拒绝，包含 API Key、JSON、PostgreSQL 持久化、Outbox 与审计事实写入：
 
-| 场景                            | 请求量 × 条目数 | 并发 |                      吞吐 | 客户端 P95 |      P99 | 错误 |
-| ------------------------------- | --------------: | ---: | ------------------------: | ---------: | -------: | ---: |
-| 可信硬拒绝                      |       2,000 × 1 |   32 |               1,733 批/秒 |   28.95 ms | 34.16 ms |    0 |
-| 混合批次（9 拒绝 + 1 建议复核） |        500 × 10 |   16 | 776.8 批/秒 / 7,768 条/秒 |   29.09 ms | 33.04 ms |    0 |
+| 场景                   | 请求量 | 并发 | 客户端吞吐      | 客户端 P95 |      P99 | 结果                         |
+| ---------------------- | -----: | ---: | ---------------: | ---------: | -------: | ---------------------------- |
+| 稳定基线               |    100 |   16 | 817.01 请求/秒   |   24.71 ms | 25.17 ms | 100 个 HTTP 200，0 错误      |
+| 突发过载保护（多应用） |  1,200 |  128 | 901.25 尝试/秒   |   受限流影响 |        — | 270 个 200，930 个 429，0 客户端错误 |
 
-混合批次语义抽样为 9 个 `reject`、1 个 `review`，路由均为 `local_rules`。由于没有活动 AI 配置，这里的 `review` 是策略要求的保守结果，不是外部模型推理结果。截图中的 P95 是服务端看板聚合值，与表中的客户端端到端 P95 口径不同，不能直接互换。
+过载场景用于验证保护语义，不是成功吞吐成绩。测试后 API 容器保持 `healthy`、重启次数为 0，`/readyz` 继续返回 200。入口总并发闸门在认证之前拒绝过载请求，认证后的全局、应用和 API Key token bucket / 并发配额继续生效，并返回 `Retry-After` 与 `RateLimit-*` Header。
 
-### 并发扫描与已知失败边界
-
-| 并发 | 请求量 |            吞吐 |      P95 | 结果                                                                |
-| ---: | -----: | --------------: | -------: | ------------------------------------------------------------------- |
-|    1 |    500 |   153.8 请求/秒 |  9.12 ms | 0 错误                                                              |
-|    8 |  1,000 |   971.4 请求/秒 | 11.10 ms | 0 错误                                                              |
-|   64 |  3,000 | 1,751.9 请求/秒 | 56.13 ms | 0 错误                                                              |
-|  128 |  3,000 |  无有效吞吐结论 |     无效 | **API 以退出码 139 异常退出；仅 8 个 HTTP 200，2,992 个客户端错误** |
-
-并发 128 的数字不能作为性能成绩。容器虽然被 Docker 自动拉起，但本地 Keycloak loopback 兼容 sidecar 仍绑定旧网络命名空间，需要重建后管理端认证才恢复。这说明当前部署恢复链路也有缺口。生产试运行前至少需要：定位 native crash、增加并发上限与背压/限流、让 sidecar 跟随主容器重建，并完成 60 分钟以上的稳定性与真实 AI 供应商压测。目前只有不高于并发 64 的短时本地结果可作为开发基线。
+未配置活动 AI 时，规则未决内容保守返回 `review`，因此这些结果不包含真实模型网络延迟。技术方案中的 1,500 item/s 仍是需要固定资源、代表性流量、真实供应商配额和至少三次 60 分钟运行共同证明的伸展目标，不能由这次短测直接宣称达成。
 
 ### 复现命令
 

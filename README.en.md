@@ -4,7 +4,7 @@
 
 VeriScan is a content-safety moderation service for business applications. It uses versioned keyword rules for low-cost screening, routes unresolved content to a configurable external AI provider, and exposes a batch API secured by application-specific API keys. The system records and returns `pass`, `reject`, or `review`; a `review` decision is handed back to the caller, and VeriScan does not operate a second human-review workflow.
 
-> This repository is still in local development and validation. The benchmark below is a short single-machine run, not a production SLA. An API process crash was reproduced at concurrency 128; see [Load test results](#load-test-results-2026-09-01).
+> This repository is still in local development and validation. The benchmark below is a short single-machine run, not a production SLA. A pre-authentication ingress gate now turns overload into controlled HTTP `429` responses, but real-provider, soak, and production-capacity tests still belong in the target environment.
 
 ## Screenshots
 
@@ -14,9 +14,9 @@ VeriScan is a content-safety moderation service for business applications. It us
 
 ### Operations-friendly rule editor
 
-![VeriScan rule editor](docs/images/readme/rule-editor.jpg)
+![VeriScan rule editor](docs/images/readme/rule-editor-v2.jpg)
 
-Rules are expressed as a keyword, a risk category, and the action to take on a match. Operators can add one rule at a time or paste one keyword per line, without learning internal `black`, `suspicious`, `white`, category-code, or decimal-weight formats.
+Rules are expressed in business language and may match keywords, common formats such as phone numbers, email addresses, and links, or combinations of words that occur together. Operators do not need to learn internal rule types, regular expressions, category codes, or decimal weights; technical safety limits remain behind an optional advanced section.
 
 ### External AI configuration
 
@@ -52,18 +52,24 @@ docs/                   Implementation, acceptance, and UI documentation
 
 Prerequisites: .NET SDK 10.0.400, Node.js 24+, pnpm 11+, and Docker.
 
-### 1. Install packages and start infrastructure
+### 1. Start the complete system with Docker
 
 ```bash
 pnpm install
 cp infra/.env.example infra/.env
-# Local development only: starts PostgreSQL, Redis, and Keycloak
-docker compose --env-file infra/.env -f infra/compose.yaml up -d --wait
+# Change the example passwords, then build and start all services
+docker compose --env-file infra/.env -f infra/compose.yaml up -d --build --wait
 ```
 
-Replace the example passwords in `infra/.env`. This Compose file starts infrastructure only; run the API and frontend as described below.
+Default endpoints:
 
-### 2. Start the API
+- Admin console: `http://localhost:5173`
+- Moderation API: `http://localhost:5000`
+- Keycloak: `http://localhost:8080`
+
+The local seed account is `veriscan-admin` with password `veriscan-local-admin-change-me`. It is for first-run local development only. Change it in Keycloak immediately and never use it in production.
+
+### 2. Optional: run the API and frontend separately
 
 Generate and securely store one stable master key for encrypting managed AI credentials:
 
@@ -79,6 +85,8 @@ ConnectionStrings__VeriScan='Host=127.0.0.1;Port=5432;Database=veriscan;Username
 ConnectionStrings__Redis='127.0.0.1:6379,password=veriscan-local-redis-change-me' \
 Database__AutoMigrate=true \
 Security__ApiKey__Pepper='replace-with-at-least-32-bytes-local-only' \
+Security__ModerationDigests__ContentPepper='replace-with-a-different-32-byte-content-pepper' \
+Security__ModerationDigests__IdempotencyPepper='replace-with-a-different-32-byte-idempotency-pepper' \
 Security__AiCredentials__MasterKey="$VERISCAN_AI_MASTER_KEY" \
 ExternalAi__AllowedHosts__0='api.openai.com' \
 ExternalAi__AllowedPorts__0=443 \
@@ -88,18 +96,18 @@ dotnet run --project apps/api/Api
 
 External AI has no outbound-host permission by default. Add self-hosted or third-party targets to `ExternalAi__AllowedHosts` / `ExternalAi__AllowedPorts`, and enforce the same boundary with deployment-level egress controls.
 
-### 3. Start the admin console
+Start the admin console:
 
 ```bash
 cp apps/admin/.env.example apps/admin/.env.local
 pnpm --dir apps/admin dev
 ```
 
-Open `http://127.0.0.1:5173`. Create a local Keycloak user with the `veriscan-admin` role before signing in. Mock data is enabled only when `VITE_API_MODE=mock` is set explicitly; a real-mode or OIDC configuration failure never silently falls back to mock mode.
+Open `http://127.0.0.1:5173`. The complete Compose stack seeds the local acceptance account. When services are started separately, reuse the same Keycloak realm or create a user with the appropriate VeriScan roles. Mock data is enabled only when `VITE_API_MODE=mock` is set explicitly; a real-mode or OIDC configuration failure never silently falls back to mock mode.
 
 ## Configuration flow
 
-1. Create a draft under **Rules & Library**, express rules in business language, validate them, and publish the revision.
+1. Create a draft under **Rules & Library**, configure keywords, common formats, or word combinations and their actions in business language, validate it, and publish the revision.
 2. Under **AI Configuration**, choose the protocol, enter the model, service URL, and API key, then test, publish, and activate the configuration.
 3. Create a caller under **Applications**, bind a published rule revision, and issue an API key with `moderation:submit` / `moderation:read` scopes.
 4. Copy the plaintext API key only when it is created or rotated. The server stores only its digest and cannot recover it later.
@@ -128,12 +136,37 @@ curl --request POST 'http://127.0.0.1:5000/api/v1/moderation/batches' \
   }'
 ```
 
-Limits: 1–100 items per batch, at most 65,536 characters per item, and `plain_text` only for now. A synchronous request returns HTTP 200; `results[].decision` is `pass`, `reject`, or `review`. Use a unique `Idempotency-Key` for safely replayable submissions.
+Limits: 1–100 items in synchronous mode and 1–1000 items in asynchronous or automatic mode; at most 64 KiB of UTF-8 per item; and `plain_text` only for now. Synchronous requests return HTTP 200. Asynchronous requests return HTTP 202 with `Location` and `Retry-After`. `results[].decision` is `pass`, `reject`, or `review`. Use a unique `Idempotency-Key` for safely replayable submissions.
+
+`mode` accepts `sync`, `async`, or `auto`. Automatic mode selects synchronous or asynchronous execution from the batch size and estimated AI work. Optional `context.scene` and `context.authorType` values can scope rules:
+
+```json
+{
+  "mode": "auto",
+  "items": [
+    {
+      "id": "comment-001",
+      "content": "Text to moderate",
+      "contentType": "plain_text",
+      "language": "en",
+      "context": { "scene": "comment", "authorType": "member" }
+    }
+  ]
+}
+```
 
 ### Read a recorded batch
 
 ```bash
 curl 'http://127.0.0.1:5000/api/v1/moderation/batches/<request-id>' \
+  --header 'X-API-Key: <application-api-key>'
+```
+
+Cancel an asynchronous batch that has not started:
+
+```bash
+curl --request POST \
+  'http://127.0.0.1:5000/api/v1/moderation/batches/<request-id>/cancel' \
   --header 'X-API-Key: <application-api-key>'
 ```
 
@@ -164,27 +197,18 @@ An API key can read records only for its own application. `/healthz` is the live
 
 This baseline measures only in-process rule evaluation. It excludes HTTP, databases, authentication, AI, and network latency.
 
-### Stable HTTP profiles
+### Current HTTP baseline
 
-Each profile ran three times. The table reports the run with median throughput:
+These measurements were taken from the isolated Compose stack after adding ingress protection. Each request contains one trusted hard reject and includes API-key authentication, JSON, PostgreSQL persistence, Outbox, and operational-fact writes:
 
-| Profile                           | Requests × items | Concurrency |                      Throughput | Client P95 |      P99 | Errors |
-| --------------------------------- | ---------------: | ----------: | ------------------------------: | ---------: | -------: | -----: |
-| Trusted hard reject               |        2,000 × 1 |          32 |                 1,733 batches/s |   28.95 ms | 34.16 ms |      0 |
-| Mixed batch (9 reject + 1 review) |         500 × 10 |          16 | 776.8 batches/s / 7,768 items/s |   29.09 ms | 33.04 ms |      0 |
+| Profile                          | Requests | Concurrency | Client throughput | Client P95 |      P99 | Outcome                              |
+| -------------------------------- | -------: | ----------: | ----------------: | ---------: | -------: | ------------------------------------ |
+| Stable baseline                  |      100 |          16 |      817.01 req/s |   24.71 ms | 25.17 ms | 100 HTTP 200, zero errors            |
+| Multi-app burst overload         |    1,200 |         128 | 901.25 attempts/s | rate-limited |        — | 270 HTTP 200, 930 HTTP 429, no client errors |
 
-The mixed-batch semantic sample produced 9 `reject` and 1 `review`, all through `local_rules`. With no active AI configuration, `review` is the conservative policy outcome, not external-model inference. The screenshot's P95 is a server-side dashboard aggregate, while the table uses client-observed end-to-end P95; the two values are not interchangeable.
+The overload profile verifies protection semantics; it is not a successful-throughput score. After the run, the API container remained healthy with zero restarts and `/readyz` still returned HTTP 200. The global ingress gate rejects excess work before authentication, while authenticated global, application, and API-key token-bucket and concurrency limits still return `Retry-After` and `RateLimit-*` headers.
 
-### Concurrency sweep and known failure boundary
-
-| Concurrency | Requests |                 Throughput |      P95 | Outcome                                                                         |
-| ----------: | -------: | -------------------------: | -------: | ------------------------------------------------------------------------------- |
-|           1 |      500 |                153.8 req/s |  9.12 ms | 0 errors                                                                        |
-|           8 |    1,000 |                971.4 req/s | 11.10 ms | 0 errors                                                                        |
-|          64 |    3,000 |              1,751.9 req/s | 56.13 ms | 0 errors                                                                        |
-|         128 |    3,000 | No valid throughput result |  Invalid | **API exited with code 139; only 8 HTTP 200 responses and 2,992 client errors** |
-
-The concurrency-128 run is a failure, not a performance score. Docker restarted the API container, but the local Keycloak loopback compatibility sidecar remained attached to the old network namespace and had to be recreated before admin authentication recovered. Before production trials, the project needs a native-crash diagnosis, explicit concurrency limits and backpressure/rate limiting, sidecar lifecycle correction, and 60+ minute soak tests against real AI providers. Only short local runs at concurrency 64 or lower are currently useful as a development baseline.
+Without an active AI configuration, unresolved rule outcomes conservatively become `review`, so these figures exclude provider network latency. The proposal's 1,500 item/s figure remains a stretch target that requires fixed resources, representative traffic, purchased provider capacity, and at least three 60-minute runs; this short test does not claim it is achieved.
 
 ### Reproduce
 
