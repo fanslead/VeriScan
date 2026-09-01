@@ -478,17 +478,6 @@
 .page-actions a {
   color: inherit;
 }
-.semi-button-primary {
-  background: var(--teal) !important;
-  border-color: var(--teal) !important;
-}
-.semi-button-primary:hover {
-  background: var(--teal-deep) !important;
-  border-color: var(--teal-deep) !important;
-}
-.semi-button-danger {
-  color: var(--red) !important;
-}
 .panel.semi-card {
   overflow: hidden;
   border: 1px solid var(--line);

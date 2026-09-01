@@ -8,6 +8,7 @@ import { mapApiError } from './errors';
 export interface ApiClient {
   get<T>(path: string, config?: AxiosRequestConfig): Promise<T>;
   post<T>(path: string, body?: unknown, config?: AxiosRequestConfig): Promise<T>;
+  put<T>(path: string, body?: unknown, config?: AxiosRequestConfig): Promise<T>;
   patch<T>(path: string, body?: unknown, config?: AxiosRequestConfig): Promise<T>;
   delete<T>(path: string, config?: AxiosRequestConfig): Promise<T>;
 }
@@ -75,6 +76,11 @@ export class RealApiClient implements ApiClient {
 
   async post<T>(path: string, body?: unknown, config?: AxiosRequestConfig): Promise<T> {
     const response = await this.client.post<T>(path, body, config);
+    return response.data;
+  }
+
+  async put<T>(path: string, body?: unknown, config?: AxiosRequestConfig): Promise<T> {
+    const response = await this.client.put<T>(path, body, config);
     return response.data;
   }
 

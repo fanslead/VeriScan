@@ -1,5 +1,9 @@
 import { RealApiClient, type ApiClient } from './httpClient';
 import {
+  mapAiConfigurationListResponse,
+  mapAiConfigurationResponse,
+  mapAiConfigurationTestResponse,
+  mapAiConfigurationDraftInput,
   mapApiKeyListResponse,
   mapApplicationListResponse,
   mapApplicationResponse,
@@ -11,6 +15,9 @@ import {
 import { MockApiClient } from './mockAdapter';
 import { useAuthStore } from '@/shared/auth/authStore';
 import type {
+  AiConfiguration,
+  AiConfigurationDraftInput,
+  AiConfigurationTestResult,
   ApiKey,
   Application,
   CreateApplicationInput,
@@ -155,3 +162,58 @@ export function createModerationService(client: ApiClient, mode: ApiMode = apiMo
 }
 
 export const moderationService = createModerationService(apiClient);
+
+export function createAiConfigurationService(client: ApiClient) {
+  return {
+    list: async (): Promise<AiConfiguration[]> =>
+      mapAiConfigurationListResponse(await client.get<unknown>('/ai/configurations')),
+
+    get: async (configurationId: string): Promise<AiConfiguration> =>
+      mapAiConfigurationResponse(
+        await client.get<unknown>(`/ai/configurations/${configurationId}`),
+      ),
+
+    create: async (input: AiConfigurationDraftInput): Promise<AiConfiguration> =>
+      mapAiConfigurationResponse(
+        await client.post<unknown>('/ai/configurations', mapAiConfigurationDraftInput(input)),
+      ),
+
+    update: async (
+      configurationId: string,
+      input: AiConfigurationDraftInput,
+    ): Promise<AiConfiguration> =>
+      mapAiConfigurationResponse(
+        await client.put<unknown>(
+          `/ai/configurations/${configurationId}`,
+          mapAiConfigurationDraftInput(input),
+        ),
+      ),
+
+    createRevision: async (configurationId: string): Promise<AiConfiguration> =>
+      mapAiConfigurationResponse(
+        await client.post<unknown>(`/ai/configurations/${configurationId}/revisions`),
+      ),
+
+    test: async (configurationId: string): Promise<AiConfigurationTestResult> =>
+      mapAiConfigurationTestResponse(
+        await client.post<unknown>(`/ai/configurations/${configurationId}/test`),
+      ),
+
+    publish: async (configurationId: string): Promise<AiConfiguration> =>
+      mapAiConfigurationResponse(
+        await client.post<unknown>(`/ai/configurations/${configurationId}/publish`),
+      ),
+
+    activate: async (configurationId: string): Promise<AiConfiguration> =>
+      mapAiConfigurationResponse(
+        await client.post<unknown>(`/ai/configurations/${configurationId}/activate`),
+      ),
+
+    archive: async (configurationId: string): Promise<AiConfiguration> =>
+      mapAiConfigurationResponse(
+        await client.post<unknown>(`/ai/configurations/${configurationId}/archive`),
+      ),
+  };
+}
+
+export const aiConfigurationService = createAiConfigurationService(apiClient);

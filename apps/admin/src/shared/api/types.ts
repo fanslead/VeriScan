@@ -7,6 +7,11 @@ export type ReviewSource =
   | 'provider_refusal'
   | 'ai_failure_fallback';
 export type ApiKeyStatus = 'active' | 'revoked' | 'expired';
+export type AiProtocol = 'openAiChatCompletions' | 'openAiResponses' | 'anthropicMessages';
+export type AiAuthScheme = 'bearer' | 'xApiKey' | 'apiKey';
+export type AiApiVersionLocation = 'none' | 'header' | 'query';
+export type AiDecodingMode = 'sendTemperatureZero' | 'omitTemperature' | 'providerFixed';
+export type AiConfigurationStatus = 'draft' | 'published' | 'archived';
 
 export interface Application {
   id: string;
@@ -41,6 +46,55 @@ export interface ApiKey {
 export interface OneTimeApiKey {
   key: ApiKey;
   plaintext: string;
+}
+
+export interface AiConfigurationDraftInput {
+  name: string;
+  protocol: AiProtocol;
+  baseUrl: string;
+  endpointPath: string;
+  credentialRef: string;
+  authScheme: AiAuthScheme;
+  model: string;
+  apiVersion?: string | null;
+  apiVersionLocation: AiApiVersionLocation;
+  systemPrompt: string;
+  decodingMode: AiDecodingMode;
+  maxInputTokens: number;
+  maxOutputTokens: number;
+  connectTimeoutMs: number;
+  requestTimeoutMs: number;
+  maxAttempts: number;
+  dataRegion: string;
+  retentionClass: string;
+}
+
+export interface AiConfiguration extends AiConfigurationDraftInput {
+  id: string;
+  publicRevisionId: string;
+  status: AiConfigurationStatus;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  publishedAt: string | null;
+  lastTestedAt: string | null;
+  lastTestSucceeded: boolean | null;
+  lastTestFailureCode: string | null;
+  adapterContractVersion: string | null;
+  canonicalSchemaVersion: string | null;
+  canonicalSchemaHash: string | null;
+  effectiveSchemaHash: string | null;
+  schemaTransformerVersion: string | null;
+}
+
+export interface AiConfigurationTestResult {
+  succeeded: boolean;
+  protocol: string;
+  model: string;
+  latencyMs: number;
+  inputTokens: number | null;
+  outputTokens: number | null;
+  failureCode: string | null;
 }
 
 export interface ModerationRecord {

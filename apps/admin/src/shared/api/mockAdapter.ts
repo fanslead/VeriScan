@@ -1,7 +1,15 @@
 import type { AxiosRequestConfig } from 'axios';
 import type { ApiClient } from './httpClient';
-import { apiKeys, applications, moderationRecords, overviewStats } from './mockData';
+import {
+  aiConfigurations,
+  apiKeys,
+  applications,
+  moderationRecords,
+  overviewStats,
+} from './mockData';
 import type {
+  AiConfiguration,
+  AiConfigurationDraftInput,
   ApiErrorShape,
   ApiKey,
   Application,
@@ -52,6 +60,8 @@ const findApplication = (id: string) => applications.find((item) => item.id === 
 
 const findKey = (id: string) => apiKeys.find((item) => item.id === id);
 
+const findAiConfiguration = (id: string) => aiConfigurations.find((item) => item.id === id);
+
 const parseQuery = (path: string) => {
   const url = new URL(path, window.location.origin);
   return { pathname: url.pathname, search: url.searchParams };
@@ -64,6 +74,16 @@ export class MockApiClient implements ApiClient {
 
     if (pathname === '/overview') {
       return result(overviewStats) as T;
+    }
+
+    if (pathname === '/ai/configurations') {
+      return result({ items: aiConfigurations }) as T;
+    }
+
+    const aiConfigurationMatch = pathname.match(/^\/ai\/configurations\/([^/]+)$/);
+    if (aiConfigurationMatch) {
+      const configuration = findAiConfiguration(aiConfigurationMatch[1]);
+      return configuration ? (result(configuration) as T) : notFound('AI 配置不存在');
     }
 
     if (pathname === '/applications') {
@@ -140,6 +160,133 @@ export class MockApiClient implements ApiClient {
 
   async post<T>(path: string, body?: unknown): Promise<T> {
     await wait(320);
+    if (path === '/ai/configurations') {
+      const input = body as AiConfigurationDraftInput;
+      const now = new Date().toISOString();
+      const configuration: AiConfiguration = {
+        ...structuredClone(input),
+        id: `ai-config-${Date.now()}`,
+        publicRevisionId: `ai-model@${Date.now()}`,
+        status: 'draft',
+        isActive: false,
+        createdAt: now,
+        updatedAt: now,
+        publishedAt: null,
+        lastTestedAt: null,
+        lastTestSucceeded: null,
+        lastTestFailureCode: null,
+        adapterContractVersion: null,
+        canonicalSchemaVersion: null,
+        canonicalSchemaHash: null,
+        effectiveSchemaHash: null,
+        schemaTransformerVersion: null,
+      };
+      aiConfigurations.unshift(configuration);
+      return result(configuration) as T;
+    }
+
+    const aiTestMatch = path.match(/^\/ai\/configurations\/([^/]+)\/test$/);
+    if (aiTestMatch) {
+      const configuration = findAiConfiguration(aiTestMatch[1]);
+      if (!configuration) return notFound('AI 配置不存在');
+      if (configuration.status === 'archived') {
+        throw new MockApiError({
+          code: 'conflict',
+          message: '已归档的配置不能执行连接测试',
+          retryable: false,
+        });
+      }
+      const testedAt = new Date().toISOString();
+      configuration.lastTestedAt = testedAt;
+      configuration.lastTestSucceeded = true;
+      configuration.lastTestFailureCode = null;
+      return result({
+        succeeded: true,
+        protocol: configuration.protocol,
+        model: configuration.model,
+        latencyMs: 184,
+        inputTokens: 42,
+        outputTokens: 18,
+        failureCode: null,
+      }) as T;
+    }
+
+    const aiRevisionMatch = path.match(/^\/ai\/configurations\/([^/]+)\/revisions$/);
+    if (aiRevisionMatch) {
+      const source = findAiConfiguration(aiRevisionMatch[1]);
+      if (!source) return notFound('AI 配置不存在');
+      const now = new Date().toISOString();
+      const revision: AiConfiguration = {
+        ...structuredClone(source),
+        id: `ai-config-${Date.now()}`,
+        publicRevisionId: `ai-model@${Date.now()}`,
+        name: `${source.name} · 新版本`,
+        status: 'draft',
+        isActive: false,
+        createdAt: now,
+        updatedAt: now,
+        publishedAt: null,
+        lastTestedAt: null,
+        lastTestSucceeded: null,
+        lastTestFailureCode: null,
+        adapterContractVersion: null,
+        canonicalSchemaVersion: null,
+        canonicalSchemaHash: null,
+        effectiveSchemaHash: null,
+        schemaTransformerVersion: null,
+      };
+      aiConfigurations.unshift(revision);
+      return result(revision) as T;
+    }
+
+    const aiLifecycleMatch = path.match(
+      /^\/ai\/configurations\/([^/]+)\/(publish|activate|archive)$/,
+    );
+    if (aiLifecycleMatch) {
+      const configuration = findAiConfiguration(aiLifecycleMatch[1]);
+      if (!configuration) return notFound('AI 配置不存在');
+      const action = aiLifecycleMatch[2];
+      const now = new Date().toISOString();
+      if (action === 'publish') {
+        if (configuration.status !== 'draft') {
+          throw new MockApiError({
+            code: 'conflict',
+            message: '只有草稿可以发布',
+            retryable: false,
+          });
+        }
+        if (
+          configuration.lastTestSucceeded !== true ||
+          !configuration.lastTestedAt ||
+          Date.parse(configuration.lastTestedAt) < Date.parse(configuration.updatedAt)
+        ) {
+          throw new MockApiError({
+            code: 'test_required',
+            message: '请先通过当前草稿的合成测试',
+            retryable: false,
+          });
+        }
+        configuration.status = 'published';
+        configuration.publishedAt = now;
+      } else if (action === 'activate') {
+        if (configuration.status !== 'published') {
+          throw new MockApiError({
+            code: 'conflict',
+            message: '只有已发布配置可以激活',
+            retryable: false,
+          });
+        }
+        aiConfigurations.forEach((item) => {
+          item.isActive = item.id === configuration.id;
+        });
+      } else {
+        configuration.status = 'archived';
+        configuration.isActive = false;
+      }
+      configuration.updatedAt = now;
+      return result(configuration) as T;
+    }
+
     if (path === '/applications') {
       const input = body as CreateApplicationInput;
       const now = new Date().toISOString();
@@ -218,6 +365,36 @@ export class MockApiClient implements ApiClient {
       return result({ key, plaintext }) as T;
     }
 
+    throw new MockApiError({ code: 'not_found', message: '请求的内容不存在', retryable: false });
+  }
+
+  async put<T>(path: string, body?: unknown): Promise<T> {
+    await wait(300);
+    const aiMatch = path.match(/^\/ai\/configurations\/([^/]+)$/);
+    if (aiMatch) {
+      const configuration = findAiConfiguration(aiMatch[1]);
+      if (!configuration) return notFound('AI 配置不存在');
+      if (configuration.status !== 'draft') {
+        throw new MockApiError({
+          code: 'conflict',
+          message: '已发布或已归档的配置不可修改',
+          retryable: false,
+        });
+      }
+      const input = body as AiConfigurationDraftInput;
+      Object.assign(configuration, structuredClone(input), {
+        updatedAt: new Date().toISOString(),
+        lastTestedAt: null,
+        lastTestSucceeded: null,
+        lastTestFailureCode: null,
+        adapterContractVersion: null,
+        canonicalSchemaVersion: null,
+        canonicalSchemaHash: null,
+        effectiveSchemaHash: null,
+        schemaTransformerVersion: null,
+      });
+      return result(configuration) as T;
+    }
     throw new MockApiError({ code: 'not_found', message: '请求的内容不存在', retryable: false });
   }
 

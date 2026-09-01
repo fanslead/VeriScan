@@ -1,4 +1,11 @@
 :root {
+  --semi-color-primary: #127c72;
+  --semi-color-primary-hover: #0a5b53;
+  --semi-color-primary-active: #074b45;
+  --semi-color-primary-disabled: #a6d7ce;
+  --semi-color-primary-light-default: #e7f4f1;
+  --semi-color-primary-light-hover: #d8ece8;
+  --semi-color-primary-light-active: #c7e3dd;
   --ink: #101828;
   --ink-soft: #182536;
   --graphite: #344054;

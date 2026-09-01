@@ -20,3 +20,12 @@ export {
   type OverviewResponseDto,
   type OverviewTrendDto,
 } from './moderationAdapter';
+export {
+  mapAiConfigurationDraftInput,
+  mapAiConfigurationListResponse,
+  mapAiConfigurationResponse,
+  mapAiConfigurationTestResponse,
+  type AiConfigurationListResponseDto,
+  type AiConfigurationResponseDto,
+  type AiConfigurationTestResponseDto,
+} from './aiConfigurationAdapter';

@@ -20,3 +20,94 @@
 .semi-skeleton {
   border-radius: 5px;
 }
+
+/* Keep every button state on the same product palette. */
+.semi-button.semi-button-primary:not(.semi-button-light):not(.semi-button-outline):not(
+    .semi-button-borderless
+  ) {
+  border: 1px solid var(--teal) !important;
+  background: var(--teal) !important;
+  color: #fff !important;
+}
+
+.semi-button.semi-button-primary:not(.semi-button-light):not(.semi-button-outline):not(
+    .semi-button-borderless
+  ):not(.semi-button-disabled):hover {
+  border-color: var(--teal-deep) !important;
+  background: var(--teal-deep) !important;
+  color: #fff !important;
+}
+
+.semi-button.semi-button-primary:not(.semi-button-light):not(.semi-button-outline):not(
+    .semi-button-borderless
+  ):not(.semi-button-disabled):active {
+  border-color: #074b45 !important;
+  background: #074b45 !important;
+  color: #fff !important;
+}
+
+.semi-button.semi-button-primary:focus-visible {
+  outline: 3px solid rgba(18, 124, 114, 0.24) !important;
+  outline-offset: 2px;
+}
+
+.semi-button.semi-button-primary.semi-button-disabled:not(.semi-button-light):not(
+    .semi-button-outline
+  ):not(.semi-button-borderless) {
+  border-color: #d6dfdd !important;
+  background: #dfe6e4 !important;
+  color: #667085 !important;
+}
+
+.semi-button.semi-button-primary .semi-icon,
+.semi-button.semi-button-primary .semi-button-content {
+  color: inherit !important;
+}
+
+.semi-button.semi-button-primary.semi-button-light:not(.semi-button-disabled),
+.semi-button.semi-button-primary.semi-button-outline:not(.semi-button-disabled) {
+  border: 1px solid var(--line);
+  background: var(--paper);
+  color: var(--teal-deep) !important;
+}
+
+.semi-button.semi-button-primary.semi-button-light:not(.semi-button-disabled):hover,
+.semi-button.semi-button-primary.semi-button-outline:not(.semi-button-disabled):hover {
+  border-color: #b8d9d3;
+  background: var(--teal-soft);
+  color: var(--teal-deep) !important;
+}
+
+.semi-button.semi-button-primary.semi-button-borderless:not(.semi-button-disabled) {
+  color: var(--teal) !important;
+}
+
+.semi-button.semi-button-primary.semi-button-borderless:not(.semi-button-disabled):hover {
+  background: var(--teal-soft);
+  color: var(--teal-deep) !important;
+}
+
+.semi-button.semi-button-tertiary.semi-button-light:not(.semi-button-disabled) {
+  border: 1px solid var(--line);
+  background: var(--paper);
+  color: var(--graphite);
+}
+
+.semi-button.semi-button-tertiary.semi-button-light:not(.semi-button-disabled):hover {
+  border-color: #b8d9d3;
+  background: var(--teal-soft);
+  color: var(--teal-deep);
+}
+
+.semi-button.semi-button-danger:not(.semi-button-light):not(.semi-button-outline):not(
+    .semi-button-borderless
+  ) {
+  background: var(--red) !important;
+  color: #fff !important;
+}
+
+.semi-button.semi-button-danger.semi-button-light,
+.semi-button.semi-button-danger.semi-button-outline,
+.semi-button.semi-button-danger.semi-button-borderless {
+  color: var(--red) !important;
+}

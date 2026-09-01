@@ -61,6 +61,35 @@ class RecordingClient implements ApiClient {
     } as T;
   }
 
+  async put<T>(path: string, body?: unknown): Promise<T> {
+    this.calls.push({ method: 'PUT', path, body });
+    return {
+      id: 'ai-config-1',
+      publicRevisionId: 'ai-model@2026-09-01',
+      name: 'AI 配置',
+      protocol: 'openAiChatCompletions',
+      baseUrl: 'https://api.openai.com',
+      endpointPath: '/v1/chat/completions',
+      credentialRef: 'config://moderation',
+      authScheme: 'bearer',
+      model: 'gpt-4o-mini',
+      systemPrompt: '这是一个至少二十个字符的测试系统提示词。',
+      decodingMode: 'omitTemperature',
+      maxInputTokens: 4096,
+      maxOutputTokens: 512,
+      connectTimeoutMs: 2000,
+      requestTimeoutMs: 15000,
+      maxAttempts: 2,
+      dataRegion: 'global',
+      retentionClass: '30d',
+      status: 'draft',
+      isActive: false,
+      createdAt: '2026-09-01T00:00:00Z',
+      updatedAt: '2026-09-01T00:00:00Z',
+      publishedAt: null,
+    } as T;
+  }
+
   async patch<T>(path: string, body?: unknown): Promise<T> {
     this.calls.push({ method: 'PATCH', path, body });
     return {

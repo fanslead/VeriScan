@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { MockApiClient } from './mockAdapter';
-import type { ApiKey, OneTimeApiKey } from './types';
+import type { AiConfiguration, ApiKey, OneTimeApiKey } from './types';
 
 describe('MockApiClient API Key lifecycle', () => {
   beforeEach(() => {
@@ -43,5 +43,47 @@ describe('MockApiClient API Key lifecycle', () => {
         expiresAt: '',
       }),
     ).rejects.toMatchObject({ shape: { code: 'validation_error' } });
+  });
+});
+
+describe('MockApiClient AI 配置生命周期', () => {
+  it('发布前必须通过当前草稿测试，复制版本会重新回到未测试草稿', async () => {
+    const client = new MockApiClient();
+    const draft = await client.post<AiConfiguration>('/ai/configurations', {
+      name: '测试路由',
+      protocol: 'openAiChatCompletions',
+      baseUrl: 'https://api.openai.com',
+      endpointPath: '/v1/chat/completions',
+      credentialRef: 'config://test',
+      authScheme: 'bearer',
+      model: 'gpt-4o-mini',
+      apiVersion: null,
+      apiVersionLocation: 'none',
+      systemPrompt: '这是一个用于测试的安全审核系统提示词，长度超过二十个字符。',
+      decodingMode: 'omitTemperature',
+      maxInputTokens: 4096,
+      maxOutputTokens: 512,
+      connectTimeoutMs: 2000,
+      requestTimeoutMs: 15000,
+      maxAttempts: 2,
+      dataRegion: 'global',
+      retentionClass: '30d',
+    });
+
+    await expect(client.post(`/ai/configurations/${draft.id}/publish`)).rejects.toMatchObject({
+      shape: { code: 'test_required' },
+    });
+
+    const test = await client.post(`/ai/configurations/${draft.id}/test`);
+    expect(test).toMatchObject({ succeeded: true });
+    await client.post(`/ai/configurations/${draft.id}/publish`);
+    const revision = await client.post<AiConfiguration>(`/ai/configurations/${draft.id}/revisions`);
+    expect(revision).toMatchObject({
+      status: 'draft',
+      isActive: false,
+      lastTestedAt: null,
+      lastTestSucceeded: null,
+      apiVersionLocation: 'none',
+    });
   });
 });

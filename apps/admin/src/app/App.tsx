@@ -29,6 +29,9 @@ const ModerationRecordsPage = lazy(async () => ({
 const WorkspaceInfoPage = lazy(async () => ({
   default: (await import('@/features/settings/WorkspaceInfoPage')).WorkspaceInfoPage,
 }));
+const AiConfigurationsPage = lazy(async () => ({
+  default: (await import('@/features/ai/AiConfigurationsPage')).AiConfigurationsPage,
+}));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -66,7 +69,7 @@ export function App() {
                 <Route path="applications/:appId/keys" element={<ApiKeysPage />} />
                 <Route path="records" element={<ModerationRecordsPage />} />
                 <Route path="records/:recordId" element={<ModerationRecordsPage />} />
-                <Route path="ai-settings" element={<WorkspaceInfoPage kind="ai" />} />
+                <Route path="ai-settings" element={<AiConfigurationsPage />} />
                 <Route path="rules" element={<WorkspaceInfoPage kind="rules" />} />
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Route>
