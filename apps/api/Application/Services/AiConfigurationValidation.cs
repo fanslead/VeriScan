@@ -7,12 +7,15 @@ namespace VeriScan.Application.Services;
 
 public sealed partial class AiConfigurationService
 {
-    private ValidatedDraft Validate(AiConfigurationDraftRequest request)
+    private ValidatedDraft Validate(
+        AiConfigurationDraftRequest request,
+        AiModelConfiguration? current = null)
     {
         var name = request.Name.Trim();
         var baseUrl = request.BaseUrl.Trim();
         var endpointPath = request.EndpointPath.Trim();
-        var credentialRef = request.CredentialRef.Trim();
+        var credentialRef = request.CredentialRef?.Trim();
+        var credentialSecret = request.ApiKey?.Trim();
         var model = request.Model.Trim();
         var systemPrompt = request.SystemPrompt.Trim();
         var dataRegion = request.DataRegion.Trim();
@@ -31,9 +34,19 @@ public sealed partial class AiConfigurationService
             throw new RequestValidationException("AI 端点路径必须是无查询参数的站内绝对路径。");
         }
 
-        if (!CredentialReferencePattern().IsMatch(credentialRef))
+        if (!string.IsNullOrWhiteSpace(credentialRef) && !CredentialReferencePattern().IsMatch(credentialRef))
         {
-            throw new RequestValidationException("credentialRef 必须使用 config://名称 格式，凭证明文不得写入数据库。");
+            throw new RequestValidationException("credentialRef 必须使用 config://名称 格式。");
+        }
+
+        var hasCurrentCredential = current is not null &&
+            (!string.IsNullOrWhiteSpace(current.CredentialCiphertext) ||
+             CredentialReferencePattern().IsMatch(current.CredentialRef));
+        if (string.IsNullOrWhiteSpace(credentialSecret) &&
+            string.IsNullOrWhiteSpace(credentialRef) &&
+            !hasCurrentCredential)
+        {
+            throw new RequestValidationException("请在管理后台填写 AI API 密钥。");
         }
 
         if (request.RequestTimeoutMs <= request.ConnectTimeoutMs)
@@ -79,7 +92,9 @@ public sealed partial class AiConfigurationService
             request.Protocol,
             baseUri.GetLeftPart(UriPartial.Authority),
             endpointPath,
-            credentialRef,
+            string.IsNullOrWhiteSpace(credentialRef) ? current?.CredentialRef : credentialRef,
+            string.IsNullOrWhiteSpace(credentialSecret) ? null : credentialSecret,
+            !string.IsNullOrWhiteSpace(credentialRef),
             request.AuthScheme,
             model,
             string.IsNullOrWhiteSpace(request.ApiVersion) ? null : request.ApiVersion.Trim(),
@@ -108,7 +123,9 @@ public sealed partial class AiConfigurationService
         AiProtocol Protocol,
         string BaseUrl,
         string EndpointPath,
-        string CredentialRef,
+        string? CredentialRef,
+        string? CredentialSecret,
+        bool ReplacesCredentialReference,
         AiAuthScheme AuthScheme,
         string Model,
         string? ApiVersion,
@@ -130,7 +147,7 @@ public sealed partial class AiConfigurationService
             draft.Protocol,
             draft.BaseUrl,
             draft.EndpointPath,
-            draft.CredentialRef,
+            draft.CredentialRef ?? "managed://encrypted",
             draft.AuthScheme,
             draft.Model,
             draft.ApiVersion,
@@ -153,7 +170,6 @@ public sealed partial class AiConfigurationService
             draft.Protocol,
             draft.BaseUrl,
             draft.EndpointPath,
-            draft.CredentialRef,
             draft.AuthScheme,
             draft.Model,
             draft.ApiVersion,
@@ -167,5 +183,17 @@ public sealed partial class AiConfigurationService
             draft.MaxAttempts,
             draft.DataRegion,
             draft.RetentionClass);
+    }
+
+    private void ApplyCredential(AiModelConfiguration configuration, ValidatedDraft draft)
+    {
+        if (!string.IsNullOrWhiteSpace(draft.CredentialSecret))
+        {
+            configuration.SetManagedCredential(credentialProtector.Protect(draft.CredentialSecret));
+        }
+        else if (draft.ReplacesCredentialReference && !string.IsNullOrWhiteSpace(draft.CredentialRef))
+        {
+            configuration.UseExternalCredentialReference(draft.CredentialRef);
+        }
     }
 }

@@ -8,7 +8,7 @@ export const createInitialValues = (): AiConfigurationDraftInput => ({
   protocol: 'openAiChatCompletions',
   baseUrl: 'https://api.openai.com',
   endpointPath: '/v1/chat/completions',
-  credentialRef: 'config://',
+  apiKey: '',
   authScheme: 'bearer',
   model: '',
   apiVersion: null,
@@ -29,7 +29,7 @@ export const toDraftValues = (configuration: AiConfiguration): AiConfigurationDr
   protocol: configuration.protocol,
   baseUrl: configuration.baseUrl,
   endpointPath: configuration.endpointPath,
-  credentialRef: configuration.credentialRef,
+  apiKey: '',
   authScheme: configuration.authScheme,
   model: configuration.model,
   apiVersion: configuration.apiVersion,
@@ -48,7 +48,10 @@ export const toDraftValues = (configuration: AiConfiguration): AiConfigurationDr
 export type FieldKey = keyof AiConfigurationDraftInput;
 export type FieldErrors = Partial<Record<FieldKey, string>>;
 
-export const validateAiConfiguration = (values: AiConfigurationDraftInput): FieldErrors => {
+export const validateAiConfiguration = (
+  values: AiConfigurationDraftInput,
+  hasExistingCredential = false,
+): FieldErrors => {
   const errors: FieldErrors = {};
   if (values.name.trim().length < 2) errors.name = '请输入至少 2 个字的配置名称';
   if (!values.model.trim()) errors.model = '请输入模型名称';
@@ -63,9 +66,8 @@ export const validateAiConfiguration = (values: AiConfigurationDraftInput): Fiel
   ) {
     errors.endpointPath = '请输入不带查询参数的路径';
   }
-  if (!/^config:\/\/[A-Za-z][A-Za-z0-9_.-]{0,127}$/.test(values.credentialRef.trim())) {
-    errors.credentialRef = '请使用 config://名称 格式';
-  }
+  if (!hasExistingCredential && !values.apiKey.trim()) errors.apiKey = '请输入模型服务的 API 密钥';
+  if (values.apiKey.length > 4096) errors.apiKey = 'API 密钥长度不能超过 4096 个字符';
   const hasApiVersion = Boolean(values.apiVersion?.trim());
   if (values.protocol === 'anthropicMessages') {
     if (!hasApiVersion) errors.apiVersion = 'Messages 协议必须填写服务商版本';

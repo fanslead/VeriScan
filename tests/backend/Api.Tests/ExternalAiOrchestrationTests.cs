@@ -165,10 +165,10 @@ public sealed class ExternalAiOrchestrationTests
 
     private sealed class FixedCredentialResolver : IExternalAiCredentialResolver
     {
-        public bool TryResolve(string credentialReference, out string credential)
+        public bool TryResolve(AiModelConfiguration configuration, out string credential)
         {
             credential = "test-secret";
-            return credentialReference == "config://Provider";
+            return configuration.CredentialRef == "config://Provider";
         }
     }
 

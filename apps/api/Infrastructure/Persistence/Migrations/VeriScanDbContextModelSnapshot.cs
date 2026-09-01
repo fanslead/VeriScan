@@ -70,6 +70,9 @@ namespace VeriScan.Infrastructure.Persistence.Migrations
                         .HasMaxLength(256)
                         .HasColumnType("character varying(256)");
 
+                    b.Property<string>("CredentialCiphertext")
+                        .HasColumnType("text");
+
                     b.Property<string>("DataRegion")
                         .IsRequired()
                         .HasMaxLength(100)

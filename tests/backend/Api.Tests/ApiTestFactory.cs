@@ -39,6 +39,7 @@ public sealed class ApiTestFactory : WebApplicationFactory<Program>
             {
                 ["Security:ApiKey:Pepper"] = "test-only-pepper-with-at-least-32-bytes-0001",
                 ["Security:ApiKey:PepperVersion"] = "test-v1",
+                ["Security:AiCredentials:MasterKey"] = "dmVyaXNjYW4tdGVzdC1tYXN0ZXIta2V5LTMyLWJ5dGU=",
                 ["Database:AutoMigrate"] = "false"
             });
         });

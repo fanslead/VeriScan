@@ -7,6 +7,8 @@ using Microsoft.Extensions.DependencyInjection;
 using VeriScan.Application.Abstractions;
 using VeriScan.Application.Contracts;
 using VeriScan.Domain.Entities;
+using VeriScan.Infrastructure.ExternalAi;
+using VeriScan.Infrastructure.Persistence;
 
 namespace VeriScan.Api.Tests;
 
@@ -172,6 +174,63 @@ public sealed class AiConfigurationApiTests(ApiTestFactory factory) : IClassFixt
     }
 
     [Fact]
+    public async Task ManagedApiKeyIsWriteOnlyAndReportedAsConfigured()
+    {
+        using var client = factory.CreateClient();
+        const string secret = "sk-managed-secret-never-returned";
+        using var request = CreateAdminRequest(HttpMethod.Post, "/api/admin/v1/ai/configurations");
+        request.Content = JsonContent.Create(CreateDraftBody("后台密钥", "model-safe") with
+        {
+            ApiKey = secret,
+            CredentialRef = null
+        });
+
+        var response = await client.SendAsync(request);
+        var body = await response.Content.ReadAsStringAsync();
+
+        Assert.True(response.IsSuccessStatusCode, body);
+        Assert.DoesNotContain(secret, body, StringComparison.Ordinal);
+        var created = JsonSerializer.Deserialize<AiConfigurationResponse>(body, JsonOptions);
+        Assert.NotNull(created);
+        Assert.True(created.HasCredential);
+        Assert.Equal("managed", created.CredentialSource);
+
+        await using var scope = factory.Services.CreateAsyncScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<VeriScanDbContext>();
+        var entity = await dbContext.AiModelConfigurations.FindAsync(created.Id);
+        Assert.NotNull(entity);
+        Assert.NotNull(entity.CredentialCiphertext);
+        Assert.DoesNotContain(secret, entity.CredentialCiphertext, StringComparison.Ordinal);
+        var resolver = scope.ServiceProvider.GetRequiredService<IExternalAiCredentialResolver>();
+        Assert.True(resolver.TryResolve(entity, out var restored));
+        Assert.Equal(secret, restored);
+    }
+
+    [Fact]
+    public async Task EmptyApiKeyOnEditKeepsExistingManagedCredential()
+    {
+        using var client = factory.CreateClient();
+        var created = await CreateDraftAsync(client, "保留密钥", "model-before");
+
+        using var request = CreateAdminRequest(
+            HttpMethod.Put,
+            $"/api/admin/v1/ai/configurations/{created.Id}");
+        request.Content = JsonContent.Create(CreateDraftBody("保留密钥", "model-after") with
+        {
+            ApiKey = null,
+            CredentialRef = null
+        });
+        var response = await client.SendAsync(request);
+        var body = await response.Content.ReadAsStringAsync();
+
+        Assert.True(response.IsSuccessStatusCode, body);
+        var updated = JsonSerializer.Deserialize<AiConfigurationResponse>(body, JsonOptions);
+        Assert.NotNull(updated);
+        Assert.True(updated.HasCredential);
+        Assert.Equal("managed", updated.CredentialSource);
+    }
+
+    [Fact]
     public async Task MessagesConfigurationRequiresControlledVersionHeader()
     {
         using var client = factory.CreateClient();
@@ -235,7 +294,7 @@ public sealed class AiConfigurationApiTests(ApiTestFactory factory) : IClassFixt
             Protocol = AiProtocol.OpenAiResponses,
             BaseUrl = "https://api.example.com",
             EndpointPath = "/v1/responses",
-            CredentialRef = "config://ProviderA",
+            ApiKey = "sk-test-provider-key",
             AuthScheme = AiAuthScheme.Bearer,
             Model = model,
             ApiVersionLocation = AiApiVersionLocation.None,

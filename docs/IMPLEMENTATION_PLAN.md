@@ -74,7 +74,7 @@ infra                    PostgreSQL、Redis、Keycloak、容器与可观测性
 - Chat Completions、Responses、Messages 三种非流式适配器；
 - canonical schema、本地严格校验和 provider-specific wire schema；
 - 有界重试、超时、熔断、限流、结果未知、安全拒绝和截断映射；
-- Provider credential 只保存密钥系统引用；请求 URL 执行 SSRF 防护；
+- Provider credential 由管理后台只写录入，开发/单机版使用独立主密钥 AES-GCM 加密保存，生产可替换为 KMS/Vault；请求 URL 执行 SSRF 防护；
 - 模型、Prompt、适配器和 schema 版本完整追溯。
 
 验收：官方 wire fixture、伪服务集成测试、故障映射和发布门禁全部通过；不依赖真实付费 Key 完成 CI。

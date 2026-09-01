@@ -27,7 +27,16 @@ public static class ExternalAiServiceCollectionExtensions
                 "ExternalAi:MaximumResponseBytes 必须在 16384 到 4194304 字节之间。")
             .ValidateOnStart();
 
+        services.AddOptions<AiCredentialEncryptionOptions>()
+            .Bind(configuration.GetSection(AiCredentialEncryptionOptions.SectionName))
+            .ValidateDataAnnotations()
+            .Validate(
+                options => AiCredentialEncryptionOptions.HasValidMasterKey(options.MasterKey),
+                "Security:AiCredentials:MasterKey 必须是 Base64 编码的 32 字节密钥。")
+            .ValidateOnStart();
+
         services.TryAddSingleton<IAiEndpointPolicy, ExternalAiEndpointPolicy>();
+        services.TryAddSingleton<IAiCredentialProtector, AiCredentialProtector>();
         services.TryAddSingleton<IExternalAiCredentialResolver, ExternalAiCredentialResolver>();
         services.TryAddSingleton<IAiSchemaDescriptor, ExternalAiSchemaDescriptor>();
         services.TryAddSingleton<IActiveAiConfigurationProvider, ActiveAiConfigurationProvider>();

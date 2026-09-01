@@ -54,7 +54,7 @@ describe('MockApiClient AI 配置生命周期', () => {
       protocol: 'openAiChatCompletions',
       baseUrl: 'https://api.openai.com',
       endpointPath: '/v1/chat/completions',
-      credentialRef: 'config://test',
+      apiKey: 'sk-test-key',
       authScheme: 'bearer',
       model: 'gpt-4o-mini',
       apiVersion: null,

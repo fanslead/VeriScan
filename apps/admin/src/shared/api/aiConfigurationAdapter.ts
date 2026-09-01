@@ -17,6 +17,8 @@ export interface AiConfigurationResponseDto {
   baseUrl?: string;
   endpointPath?: string;
   credentialRef?: string;
+  hasCredential?: boolean;
+  credentialSource?: string;
   authScheme?: string;
   model?: string;
   apiVersion?: string | null;
@@ -128,6 +130,8 @@ export function mapAiConfigurationResponse(value: unknown): AiConfiguration {
     baseUrl: stringValue(object.baseUrl),
     endpointPath: stringValue(object.endpointPath),
     credentialRef: stringValue(object.credentialRef),
+    hasCredential: object.hasCredential === true,
+    credentialSource: object.credentialSource === 'managed' ? 'managed' : 'server',
     authScheme: authSchemeValue(object.authScheme),
     model: stringValue(object.model),
     apiVersion: nullableStringValue(object.apiVersion),
@@ -185,7 +189,7 @@ export function mapAiConfigurationDraftInput(
     protocol: value.protocol,
     baseUrl: value.baseUrl.trim(),
     endpointPath: value.endpointPath.trim(),
-    credentialRef: value.credentialRef.trim(),
+    apiKey: value.apiKey.trim(),
     authScheme: value.authScheme,
     model: value.model.trim(),
     apiVersion: value.apiVersion?.trim() || null,

@@ -347,7 +347,7 @@ output_config.format = {
   "protocol": "openai_responses",
   "baseUrl": "https://api.example.com",
   "endpointPath": "/v1/responses",
-  "credentialRef": "vault://veriscan/prod/provider-a/key",
+  "apiKey": "<write-only>",
   "authScheme": "bearer",
   "model": "provider-model-snapshot-2026-08-01",
   "apiVersion": null,
@@ -375,7 +375,7 @@ output_config.format = {
 - 全局出站域名/端口 allowlist 只能由 `platform_admin` 经安全审批维护；租户 `ai_config_editor` 只能从 allowlist 中选择，不能借模型配置扩大网络边界；
 - 禁止 IP literal、localhost、私网/链路本地/云元数据地址、URL userinfo 和跨域重定向；连接前后校验 DNS 解析，防止 SSRF 与 DNS rebinding；
 - credential Header 名称来自 `bearer/x-api-key/api-key` 受控枚举；后台不得配置 `Host`、`Content-Length`、转发头或其他任意鉴权 Header，仅允许显式白名单中的非敏感供应商 Header；API version 也只能按适配器允许的 header/query 名称注入；
-- 凭证明文只进入密钥管理系统；数据库保存 `credential_ref`、credential version 和末四位提示，后台读取永不回显完整值；
+- 凭据在管理后台以密码字段只写录入；开发/单机部署由服务端使用数据库之外的主密钥执行 AES-GCM 加密，数据库只保存密文，生产部署优先改由 KMS/Vault 托管并保存 `credential_ref`；列表、详情、审计 diff 与日志均不得返回明文或密文；编辑时空值表示保留，非空值表示轮换；
 - 解码模式必须显式选择 `send_temperature_zero|omit_temperature|provider_fixed` 并通过 capability 探测；某些模型不接受非默认 temperature 时必须省略字段，不能强发 `0`。Token 上限、超时、并发、RPM/TPM、价格和数据策略不能留空依赖供应商默认值；
 - 模型别名、Prompt、输出 schema、协议 capability、价格和凭证版本全部参与发布快照与结果审计。
 
@@ -721,17 +721,17 @@ HTTP 级错误使用 Problem Details。批内某个 item 的超时、未知语�
 以下接口仅供后台 OIDC 用户使用，按 `ai_config_editor/publisher/tenant_admin` 授权，不接受应用 API Key：
 
 ```http
-POST /api/admin/v1/ai/credentials
-POST /api/admin/v1/ai/model-configs
-GET  /api/admin/v1/ai/model-configs/{configId}
-POST /api/admin/v1/ai/model-configs/{configId}/test
-POST /api/admin/v1/ai/model-configs/{configId}/publish
+POST /api/admin/v1/ai/configurations
+GET  /api/admin/v1/ai/configurations/{configId}
+PUT  /api/admin/v1/ai/configurations/{configId}
+POST /api/admin/v1/ai/configurations/{configId}/test
+POST /api/admin/v1/ai/configurations/{configId}/publish
 POST /api/admin/v1/ai/routes
 POST /api/admin/v1/ai/routes/{routeId}/publish
 GET  /api/admin/v1/usage?applicationId=...&from=...&to=...
 ```
 
-- credential 创建请求中的供应商 secret 通过 TLS 到达后端后直接写入 KMS/Vault；数据库和响应只保存 `credentialRef`、版本和掩码提示，服务器不得在日志、异常或审计 diff 中序列化 secret；
+- `apiKey` 通过 TLS 到达后端后立即交给凭据保护器；单机版保存带随机 nonce 的认证密文，KMS/Vault 模式保存引用。任何响应都只返回 `hasCredential/credentialSource`，服务器不得在日志、异常或审计 diff 中序列化 secret；
 - 创建 model config/route 返回 `201 Created + Location`；draft 可以编辑，published 不可修改，只能从旧版克隆新 revision；
 - `test` 使用系统合成文本并返回 URL/证书、协议、模型可达性、schema、Token usage、延迟和非敏感错误；测试通过不等于可以发布；
 - `publish` 校验审批、evaluation run、数据地域、配额、价格和回滚目标，以事务/CAS 切换 active revision；
@@ -963,7 +963,8 @@ allowed_regions, status, created_at
 
 ai_model_config_versions:
 id, public_revision_id, provider_id, protocol, base_url, endpoint_path,
-credential_ref, credential_version, auth_scheme, model_name,
+credential_source, credential_ciphertext NULL, credential_ref NULL,
+credential_version, auth_scheme, model_name,
 api_version, api_version_location,
 capabilities jsonb, prompt_template_version_id,
 output_schema_version, output_schema_hash,
@@ -981,7 +982,7 @@ retry_policy jsonb, fallback_conditions jsonb, rollout jsonb,
 status, created_at, published_at
 ```
 
-发布版本不可原地编辑。Provider credential 明文不入数据库，`credential_ref` 指向 KMS/Vault；应用只能引用租户允许的已发布路由。价格使用带生效区间的 `pricing_versions`，历史调用保存计费快照，避免价格更新改写历史估算。
+发布版本不可原地编辑。Provider credential 明文不入数据库：单机模式保存带认证标签的 `credential_ciphertext`，主密钥由部署 Secret 注入；KMS/Vault 模式仅保存 `credential_ref`。应用只能引用租户允许的已发布路由。价格使用带生效区间的 `pricing_versions`，历史调用保存计费快照，避免价格更新改写历史估算。
 
 #### ai_invocations / calibration_versions / evaluation_runs
 
@@ -1133,8 +1134,8 @@ API Key 元数据使用独立短 TTL L1 缓存，按 `public_key_id` 定位并�
 2. 应用管理：创建/停用应用、test/live 环境、负责人、默认/允许策略、外发策略、Webhook 和配额；
 3. API Key 管理：一次性创建、掩码列表、轮换、暂停、撤销、过期提醒、scope/CIDR 和异常使用告警；
 4. 策略管理：分类体系、AI 路由、失败策略、灰度范围和回滚；
-5. 规则管理：词库、组合规则、正则沙箱、测试集、审批和发布；
-6. AI 供应商与模型配置：协议、URL、credential ref、模型、Prompt、schema、超时、限额、价格、地域、连接测试、评测、灰度和回滚；
+5. 规则管理：以“关键词、风险分类、直接拦截/交给 AI 判断/作为语境例外”的业务语言逐条配置，实时展示命中结果预览；批量添加采用每行一个关键词和统一处理方式，高级规则、测试集、审批和发布分层呈现；
+6. AI 供应商与模型配置：协议、URL、只写 API 密钥、模型、Prompt、schema、超时、限额、价格、地域、连接测试、评测、灰度和回滚；
 7. RAG 管理：来源、审批、生效/失效、检索测试和投毒检查；
 8. 记录查询：按应用、决定、类别、`reviewSource`、降级和错误筛选，详情默认脱敏，只读展示证据与版本；
 9. 审计中心：敏感查看、导出、应用/Key/AI 配置变更、登录和权限变更；
@@ -1200,7 +1201,7 @@ AI“测试连接”只允许使用系统内置合成/脱敏文本，并显示�
 ### 10.4 密钥生命周期
 
 - 应用 Key 创建、轮换、暂停、撤销、过期与失败鉴权写入不可变审计；日志只记录 `api_key_id`/前缀，不记录完整 Key；
-- Provider credential 只由 AI 网关在调用时按 `credential_ref` 读取，常驻内存时间最小化，不返回 API/Worker/前端；
+- Provider credential 只由 AI 网关在调用前解密或按 `credential_ref` 读取，常驻内存时间最小化，不返回 API/Worker/前端；数据库备份与加密主密钥必须分离保存；
 - 应用 Key、Provider credential、Webhook signing secret 和 HMAC/加密主密钥使用不同用途、不同密钥域和不同轮换计划；
 - 疑似泄露时可以单独撤销 Key 或凭证、使本地缓存失效、停止对应应用/AI 路由并生成安全事件；
 - 定期扫描源码、镜像、日志和前端构建产物中的密钥特征；任何测试 Key 不得拥有生产供应商或生产数据权限。
@@ -1378,7 +1379,7 @@ Phase 0 必须先冻结 `reference_profile_id`，其中包含 API/Gateway 资源
 - PostgreSQL 开启加密备份和 WAL/PITR；建议初始目标 RPO ≤ 5 分钟、RTO ≤ 60 分钟；
 - 每季度执行一次真实恢复演练，并校验应用、Key 状态、规则、AI 配置、审核、统计、审计和密钥引用可用性；
 - Redis 不纳入权威 RPO，丢失后重建；
-- Prompt/schema、AI 配置、规则快照和容器制品保存在不可变制品库并保留当前/上一稳定版本；Provider credential 仍由外部密钥管理系统恢复，不能随数据库备份明文复制；
+- Prompt/schema、AI 配置、规则快照和容器制品保存在不可变制品库并保留当前/上一稳定版本；单机模式的凭据密文随数据库备份，但加密主密钥必须由独立 Secret 备份恢复，KMS/Vault 模式则恢复密钥引用；两种模式都不得复制凭证明文；
 - 单节点部署不宣称高可用，生产高可用需要 API/Worker/Gateway 多实例、获批供应商容量和 PostgreSQL 故障切换。
 
 ## 13. 测试与质量保障
@@ -1514,7 +1515,7 @@ Phase 0 必须先冻结 `reference_profile_id`，其中包含 API/Gateway 资源
 ### 数据与安全
 
 - [ ] `X-API-Key` 创建、一次性显示、摘要存储、scope、轮换、撤销、跨应用隔离和配额通过测试；
-- [ ] Provider credential 与应用 Key 分离，KMS 引用、轮换和泄漏响应通过演练；
+- [ ] Provider credential 与应用 Key 分离，单机加密或 KMS 引用、轮换和泄漏响应通过演练；
 - [ ] 原文不进入日志、Trace 和非加密缓存；
 - [ ] 外发策略、DPA/地域/留存审批与 AI URL SSRF/DNS rebinding 防护通过测试；
 - [ ] 保留、删除、备份和恢复流程通过演练；

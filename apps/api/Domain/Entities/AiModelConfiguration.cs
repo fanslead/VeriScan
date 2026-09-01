@@ -65,6 +65,8 @@ public sealed class AiModelConfiguration
 
     public string CredentialRef { get; private set; } = string.Empty;
 
+    public string? CredentialCiphertext { get; private set; }
+
     public AiAuthScheme AuthScheme { get; private set; }
 
     public string Model { get; private set; } = string.Empty;
@@ -122,7 +124,6 @@ public sealed class AiModelConfiguration
         AiProtocol protocol,
         string baseUrl,
         string endpointPath,
-        string credentialRef,
         AiAuthScheme authScheme,
         string model,
         string? apiVersion,
@@ -143,7 +144,7 @@ public sealed class AiModelConfiguration
             protocol,
             baseUrl,
             endpointPath,
-            credentialRef,
+            CredentialRef,
             authScheme,
             model,
             apiVersion,
@@ -157,6 +158,33 @@ public sealed class AiModelConfiguration
             maxAttempts,
             dataRegion,
             retentionClass);
+    }
+
+    public void SetManagedCredential(string credentialCiphertext)
+    {
+        EnsureDraft();
+        ArgumentException.ThrowIfNullOrWhiteSpace(credentialCiphertext);
+        CredentialRef = "managed://encrypted";
+        CredentialCiphertext = credentialCiphertext;
+        InvalidateTestResult();
+    }
+
+    public void UseExternalCredentialReference(string credentialRef)
+    {
+        EnsureDraft();
+        ArgumentException.ThrowIfNullOrWhiteSpace(credentialRef);
+        CredentialRef = credentialRef;
+        CredentialCiphertext = null;
+        InvalidateTestResult();
+    }
+
+    public void CopyCredentialFrom(AiModelConfiguration source)
+    {
+        EnsureDraft();
+        ArgumentNullException.ThrowIfNull(source);
+        CredentialRef = source.CredentialRef;
+        CredentialCiphertext = source.CredentialCiphertext;
+        InvalidateTestResult();
     }
 
     public void Publish(
@@ -252,6 +280,11 @@ public sealed class AiModelConfiguration
         MaxAttempts = maxAttempts;
         DataRegion = dataRegion;
         RetentionClass = retentionClass;
+        InvalidateTestResult();
+    }
+
+    private void InvalidateTestResult()
+    {
         LastTestedAt = null;
         LastTestSucceeded = null;
         LastTestFailureCode = null;

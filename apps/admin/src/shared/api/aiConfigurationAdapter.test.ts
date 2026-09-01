@@ -13,6 +13,8 @@ const response = {
   baseUrl: 'https://api.anthropic.com',
   endpointPath: '/v1/messages',
   credentialRef: 'config://anthropic-prod',
+  hasCredential: true,
+  credentialSource: 'managed',
   authScheme: 'xApiKey',
   model: 'claude-3-5-haiku-latest',
   apiVersion: '2023-06-01',
@@ -58,6 +60,8 @@ describe('AI 配置 DTO 适配', () => {
       schemaTransformerVersion: 'transformer-2',
       status: 'published',
       isActive: true,
+      hasCredential: true,
+      credentialSource: 'managed',
     });
   });
 

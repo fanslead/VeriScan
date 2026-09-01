@@ -26,7 +26,7 @@ public static class AiConfigurationEndpoints
         group.MapPost("", CreateAsync)
             .WithName("CreateAiConfiguration")
             .WithSummary("创建 AI 配置草稿")
-            .WithDescription("凭证明文必须由服务端密钥配置提供；此接口只保存 config:// 引用。")
+            .WithDescription("API 密钥为只写字段，服务端加密保存，任何读取接口均不返回明文或密文。")
             .Produces<AiConfigurationResponse>(StatusCodes.Status201Created)
             .ProducesProblem(StatusCodes.Status400BadRequest);
 

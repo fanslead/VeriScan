@@ -37,13 +37,19 @@ export function AiConfigurationEditor({
   const [touched, setTouched] = useState<Partial<Record<FieldKey, boolean>>>({});
 
   useEffect(() => {
-    if (!visible) return;
+    if (!visible) {
+      setValues((current) => (current.apiKey ? { ...current, apiKey: '' } : current));
+      return;
+    }
     setValues(configuration ? toDraftValues(configuration) : createInitialValues());
     setTouched({});
     if (formRef.current) formRef.current.scrollTop = 0;
   }, [configuration, visible]);
 
-  const errors = useMemo(() => validateAiConfiguration(values), [values]);
+  const errors = useMemo(
+    () => validateAiConfiguration(values, configuration?.hasCredential ?? false),
+    [configuration?.hasCredential, values],
+  );
   const update = <K extends FieldKey>(key: K, value: AiConfigurationDraftInput[K]) =>
     setValues((current) => ({ ...current, [key]: value }));
   const markTouched = (key: FieldKey) => setTouched((current) => ({ ...current, [key]: true }));
@@ -93,7 +99,7 @@ export function AiConfigurationEditor({
       model: true,
       baseUrl: true,
       endpointPath: true,
-      credentialRef: true,
+      apiKey: true,
       apiVersion: true,
       apiVersionLocation: true,
       systemPrompt: true,
@@ -111,7 +117,7 @@ export function AiConfigurationEditor({
       name: values.name.trim(),
       baseUrl: values.baseUrl.trim(),
       endpointPath: values.endpointPath.trim(),
-      credentialRef: values.credentialRef.trim(),
+      apiKey: values.apiKey.trim(),
       model: values.model.trim(),
       apiVersion: values.apiVersion?.trim() || null,
       systemPrompt: values.systemPrompt.trim(),
@@ -120,14 +126,20 @@ export function AiConfigurationEditor({
     });
   };
 
-  const sectionProps: AiConfigurationFormSectionProps = { values, update, markTouched, error };
+  const sectionProps: AiConfigurationFormSectionProps = {
+    values,
+    hasExistingCredential: configuration?.hasCredential ?? false,
+    update,
+    markTouched,
+    error,
+  };
   const status = configuration ? statusMeta[configuration.status] : null;
 
   return (
     <Modal
       visible={visible}
       title={configuration ? '编辑 AI 配置草稿' : '创建 AI 配置草稿'}
-      width={780}
+      width="min(780px, calc(100vw - 24px))"
       onCancel={onCancel}
       footer={[
         <Button key="cancel" onClick={onCancel} disabled={loading}>
@@ -154,7 +166,7 @@ export function AiConfigurationEditor({
             <p>
               {configuration
                 ? '已发布版本不可原地修改；若要调整线上路由，请创建新的草稿版本。'
-                : '地址、模型和策略会在服务端校验，凭据只填写安全引用。'}
+                : '地址、模型和策略会在服务端校验，API 密钥会加密保存且不会再次回显。'}
             </p>
           </div>
           {status ? (

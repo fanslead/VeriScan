@@ -15,6 +15,9 @@ internal static class AiConfigurationMappings
             configuration.BaseUrl,
             configuration.EndpointPath,
             configuration.CredentialRef,
+            !string.IsNullOrWhiteSpace(configuration.CredentialCiphertext) ||
+            configuration.CredentialRef.StartsWith("config://", StringComparison.Ordinal),
+            string.IsNullOrWhiteSpace(configuration.CredentialCiphertext) ? "server" : "managed",
             configuration.AuthScheme,
             configuration.Model,
             configuration.ApiVersion,

@@ -88,6 +88,8 @@ class RecordingClient implements ApiClient {
       baseUrl: 'https://api.openai.com',
       endpointPath: '/v1/chat/completions',
       credentialRef: 'config://moderation',
+      hasCredential: true,
+      credentialSource: 'server',
       authScheme: 'bearer',
       model: 'gpt-4o-mini',
       systemPrompt: '这是一个至少二十个字符的测试系统提示词。',

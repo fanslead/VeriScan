@@ -10,6 +10,8 @@ const configurationResponse = {
   baseUrl: 'https://api.openai.com',
   endpointPath: '/v1/chat/completions',
   credentialRef: 'config://openai-prod',
+  hasCredential: true,
+  credentialSource: 'server',
   authScheme: 'bearer',
   model: 'gpt-4o-mini',
   apiVersion: null,
@@ -76,7 +78,7 @@ const draft = {
   protocol: 'openAiChatCompletions' as const,
   baseUrl: ' https://api.openai.com ',
   endpointPath: ' /v1/chat/completions ',
-  credentialRef: ' config://openai-prod ',
+  apiKey: ' sk-new-provider-key ',
   authScheme: 'bearer' as const,
   model: ' gpt-4o-mini ',
   apiVersion: null,
@@ -119,10 +121,10 @@ describe('AI 配置服务契约', () => {
     expect(client.calls[1].body).toMatchObject({
       baseUrl: 'https://api.openai.com',
       endpointPath: '/v1/chat/completions',
-      credentialRef: 'config://openai-prod',
+      apiKey: 'sk-new-provider-key',
       model: 'gpt-4o-mini',
       apiVersionLocation: 'none',
     });
-    expect(client.calls[1].body).not.toHaveProperty('apiKey');
+    expect(client.calls[1].body).not.toHaveProperty('credentialRef');
   });
 });

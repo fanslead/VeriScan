@@ -18,8 +18,11 @@ public record AiConfigurationDraftRequest
     [Required, StringLength(256)]
     public required string EndpointPath { get; init; }
 
-    [Required, StringLength(256)]
-    public required string CredentialRef { get; init; }
+    [StringLength(4096)]
+    public string? ApiKey { get; init; }
+
+    [StringLength(256)]
+    public string? CredentialRef { get; init; }
 
     public required AiAuthScheme AuthScheme { get; init; }
 
@@ -66,6 +69,8 @@ public sealed record AiConfigurationResponse(
     string BaseUrl,
     string EndpointPath,
     string CredentialRef,
+    bool HasCredential,
+    string CredentialSource,
     AiAuthScheme AuthScheme,
     string Model,
     string? ApiVersion,

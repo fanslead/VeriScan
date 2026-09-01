@@ -7,7 +7,7 @@ const validDraft = (): AiConfigurationDraftInput => ({
   ...createInitialValues(),
   name: '主路由',
   model: 'gpt-4o-mini',
-  credentialRef: 'config://provider-prod',
+  apiKey: 'sk-test-key',
 });
 
 describe('AI 配置表单规则', () => {
@@ -79,6 +79,9 @@ describe('AI 配置表单规则', () => {
       ...validDraft(),
       id: 'ai-config-1',
       publicRevisionId: 'ai-model@1',
+      credentialRef: 'managed://encrypted',
+      hasCredential: true,
+      credentialSource: 'managed' as const,
       status: 'published' as const,
       isActive: true,
       createdAt: '2026-09-01T01:00:00Z',

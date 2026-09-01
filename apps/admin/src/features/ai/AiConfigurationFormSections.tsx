@@ -16,6 +16,7 @@ import type { FieldKey } from './aiConfigurationFormModel';
 
 export interface AiConfigurationFormSectionProps {
   values: AiConfigurationDraftInput;
+  hasExistingCredential?: boolean;
   update: <K extends FieldKey>(key: K, value: AiConfigurationDraftInput[K]) => void;
   markTouched: (key: FieldKey) => void;
   error: (key: FieldKey) => string | undefined;
@@ -84,6 +85,7 @@ export function RouteIdentitySection({
 
 export function ConnectionSection({
   values,
+  hasExistingCredential = false,
   update,
   markTouched,
   error,
@@ -106,7 +108,7 @@ export function ConnectionSection({
       <div className="ai-config-form__section-head">
         <span className="section-kicker">CONNECTION</span>
         <h2>连接入口</h2>
-        <p>只保存服务地址和凭据引用，不在管理台接收或展示密钥明文。</p>
+        <p>在这里填写模型服务地址和 API 密钥；密钥保存后只显示配置状态，不会再次回显。</p>
       </div>
       <div className="ai-config-form__grid ai-config-form__grid--wide">
         <label className="form-field">
@@ -153,18 +155,25 @@ export function ConnectionSection({
         </label>
         <label className="form-field">
           <span>
-            凭据引用 <i>*</i>
+            API 密钥 <i>*</i>
           </span>
           <Input
-            value={values.credentialRef}
-            onChange={(value) => update('credentialRef', value)}
-            onBlur={() => markTouched('credentialRef')}
-            placeholder="config://provider-prod"
-            aria-invalid={Boolean(error('credentialRef'))}
+            mode="password"
+            value={values.apiKey}
+            onChange={(value) => update('apiKey', value)}
+            onBlur={() => markTouched('apiKey')}
+            placeholder="请输入供应商 API Key"
+            autoComplete="new-password"
+            aria-invalid={Boolean(error('apiKey'))}
           />
-          {error('credentialRef') ? (
-            <small className="field-error">{error('credentialRef')}</small>
-          ) : null}
+          {error('apiKey') ? <small className="field-error">{error('apiKey')}</small> : null}
+          <small className="field-hint">
+            {values.apiKey
+              ? '将用新密钥替换当前密钥。'
+              : hasExistingCredential
+                ? '留空会保留已保存的密钥。'
+                : '新配置需要填写模型服务的 API 密钥。'}
+          </small>
         </label>
         <label className="form-field">
           <span>服务商版本</span>
@@ -199,8 +208,8 @@ export function ConnectionSection({
         </label>
       </div>
       <div className="ai-config-secure-note">
-        <strong>{authSchemeLabel(values.authScheme)} · 安全引用</strong>
-        <span>凭据由服务端安全注入上游请求，页面不会接触密钥明文。</span>
+        <strong>{authSchemeLabel(values.authScheme)} · 加密保存</strong>
+        <span>密钥只随保存请求提交一次，服务端加密入库，列表和详情接口均不会返回。</span>
       </div>
     </section>
   );

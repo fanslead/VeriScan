@@ -16,6 +16,7 @@ public sealed class AiModelConfigurationConfiguration : IEntityTypeConfiguration
         builder.Property(configuration => configuration.BaseUrl).HasMaxLength(2048).IsRequired();
         builder.Property(configuration => configuration.EndpointPath).HasMaxLength(256).IsRequired();
         builder.Property(configuration => configuration.CredentialRef).HasMaxLength(256).IsRequired();
+        builder.Property(configuration => configuration.CredentialCiphertext).HasColumnType("text");
         builder.Property(configuration => configuration.AuthScheme).HasConversion<string>().HasMaxLength(32).IsRequired();
         builder.Property(configuration => configuration.Model).HasMaxLength(200).IsRequired();
         builder.Property(configuration => configuration.ApiVersion).HasMaxLength(64);

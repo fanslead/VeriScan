@@ -37,14 +37,59 @@ public sealed class ExternalAiPolicyTests
                 ["ExternalAi:Credentials:ProviderA"] = "provider-secret"
             })
             .Build();
-        var resolver = new ExternalAiCredentialResolver(configuration);
+        var protector = CreateProtector();
+        var resolver = new ExternalAiCredentialResolver(configuration, protector);
+        var configured = CreateConfiguration("config://ProviderA");
+        var missing = CreateConfiguration("config://missing");
+        var plaintext = CreateConfiguration("provider-secret");
+        var traversal = CreateConfiguration("config://../ProviderA");
 
-        Assert.True(resolver.TryResolve("config://ProviderA", out var credential));
+        Assert.True(resolver.TryResolve(configured, out var credential));
         Assert.Equal("provider-secret", credential);
-        Assert.False(resolver.TryResolve("provider-secret", out _));
-        Assert.False(resolver.TryResolve("config://missing", out _));
-        Assert.False(resolver.TryResolve("config://../ProviderA", out _));
+        Assert.False(resolver.TryResolve(plaintext, out _));
+        Assert.False(resolver.TryResolve(missing, out _));
+        Assert.False(resolver.TryResolve(traversal, out _));
     }
+
+    [Fact]
+    public void ManagedCredentialIsEncryptedAndTamperingIsRejected()
+    {
+        var protector = CreateProtector();
+        const string secret = "sk-managed-provider-secret";
+
+        var protectedValue = protector.Protect(secret);
+
+        Assert.DoesNotContain(secret, protectedValue, StringComparison.Ordinal);
+        Assert.True(protector.TryUnprotect(protectedValue, out var restored));
+        Assert.Equal(secret, restored);
+        Assert.False(protector.TryUnprotect(protectedValue + "tampered", out _));
+    }
+
+    private static AiCredentialProtector CreateProtector() => new(Options.Create(
+        new AiCredentialEncryptionOptions
+        {
+            MasterKey = "dmVyaXNjYW4tdGVzdC1tYXN0ZXIta2V5LTMyLWJ5dGU="
+        }));
+
+    private static VeriScan.Domain.Entities.AiModelConfiguration CreateConfiguration(string credentialRef) => new(
+        "测试配置",
+        VeriScan.Domain.Entities.AiProtocol.OpenAiResponses,
+        "https://api.example.com",
+        "/v1/responses",
+        credentialRef,
+        VeriScan.Domain.Entities.AiAuthScheme.Bearer,
+        "model",
+        null,
+        VeriScan.Domain.Entities.AiApiVersionLocation.None,
+        "你是内容审核助手。请仅返回规定格式的结构化审核结果。",
+        VeriScan.Domain.Entities.AiDecodingMode.OmitTemperature,
+        4096,
+        512,
+        2000,
+        15000,
+        2,
+        "global",
+        "30d");
 
     private sealed class StaticOptionsMonitor<T>(T currentValue) : IOptionsMonitor<T>
     {

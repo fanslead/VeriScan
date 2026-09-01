@@ -295,11 +295,15 @@ export class MockApiClient implements ApiClient {
 
     if (path === '/ai/configurations') {
       const input = body as AiConfigurationDraftInput;
+      const { apiKey, ...safeInput } = structuredClone(input);
       const now = new Date().toISOString();
       const configuration: AiConfiguration = {
-        ...structuredClone(input),
+        ...safeInput,
         id: `ai-config-${Date.now()}`,
         publicRevisionId: `ai-model@${Date.now()}`,
+        credentialRef: 'managed://encrypted',
+        hasCredential: Boolean(apiKey),
+        credentialSource: 'managed',
         status: 'draft',
         isActive: false,
         createdAt: now,
@@ -551,7 +555,10 @@ export class MockApiClient implements ApiClient {
         });
       }
       const input = body as AiConfigurationDraftInput;
-      Object.assign(configuration, structuredClone(input), {
+      const { apiKey, ...safeInput } = structuredClone(input);
+      Object.assign(configuration, safeInput, {
+        hasCredential: configuration.hasCredential || Boolean(apiKey),
+        credentialSource: apiKey ? 'managed' : configuration.credentialSource,
         updatedAt: new Date().toISOString(),
         lastTestedAt: null,
         lastTestSucceeded: null,

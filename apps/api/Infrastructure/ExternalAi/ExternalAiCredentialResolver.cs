@@ -1,25 +1,35 @@
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.Configuration;
+using VeriScan.Application.Abstractions;
+using VeriScan.Domain.Entities;
 
 namespace VeriScan.Infrastructure.ExternalAi;
 
 public interface IExternalAiCredentialResolver
 {
-    bool TryResolve(string credentialReference, out string credential);
+    bool TryResolve(AiModelConfiguration configuration, out string credential);
 }
 
-public sealed partial class ExternalAiCredentialResolver(IConfiguration configuration) : IExternalAiCredentialResolver
+public sealed partial class ExternalAiCredentialResolver(
+    IConfiguration appConfiguration,
+    IAiCredentialProtector credentialProtector) : IExternalAiCredentialResolver
 {
-    public bool TryResolve(string credentialReference, out string credential)
+    public bool TryResolve(AiModelConfiguration configuration, out string credential)
     {
         credential = string.Empty;
+        if (!string.IsNullOrWhiteSpace(configuration.CredentialCiphertext))
+        {
+            return credentialProtector.TryUnprotect(configuration.CredentialCiphertext, out credential);
+        }
+
+        var credentialReference = configuration.CredentialRef;
         if (CredentialReferencePattern().Match(credentialReference.Trim()) is not { Success: true } match)
         {
             return false;
         }
 
         var name = match.Groups["name"].Value;
-        var configuredCredential = configuration[$"{ExternalAiOptions.SectionName}:Credentials:{name}"];
+        var configuredCredential = appConfiguration[$"{ExternalAiOptions.SectionName}:Credentials:{name}"];
         if (string.IsNullOrWhiteSpace(configuredCredential))
         {
             return false;

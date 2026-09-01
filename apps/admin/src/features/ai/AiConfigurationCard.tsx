@@ -86,10 +86,11 @@ export function AiConfigurationCard({
         </div>
         <div>
           <span className="ai-config-card__label">访问凭据</span>
-          <strong className="ai-config-card__mono">
-            {configuration.credentialRef || '未填写引用'}
-          </strong>
-          <small>{authSchemeLabel(configuration.authScheme)} · 服务端安全注入</small>
+          <strong>{configuration.hasCredential ? '已安全配置' : '尚未配置'}</strong>
+          <small>
+            {authSchemeLabel(configuration.authScheme)} ·{' '}
+            {configuration.credentialSource === 'managed' ? '后台加密保存' : '服务端环境注入'}
+          </small>
         </div>
       </div>
 

@@ -48,7 +48,7 @@ public sealed class ExternalModerationAiClient(
                 "AI_INPUT_TOO_LARGE");
         }
 
-        if (!credentialResolver.TryResolve(configuration.CredentialRef, out var credential))
+        if (!credentialResolver.TryResolve(configuration, out var credential))
         {
             return ExternalAiResultMapping.Failure(
                 configuration,

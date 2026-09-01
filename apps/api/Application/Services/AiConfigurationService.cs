@@ -36,17 +36,20 @@ public sealed partial class AiConfigurationService : IAiConfigurationService
     private readonly IAiConfigurationProbe probe;
     private readonly IAiSchemaDescriptor schemaDescriptor;
     private readonly IAiModelConfigurationStore store;
+    private readonly IAiCredentialProtector credentialProtector;
 
     public AiConfigurationService(
         IAiModelConfigurationStore store,
         IAiEndpointPolicy endpointPolicy,
         IAiConfigurationProbe probe,
-        IAiSchemaDescriptor schemaDescriptor)
+        IAiSchemaDescriptor schemaDescriptor,
+        IAiCredentialProtector credentialProtector)
     {
         this.store = store;
         this.endpointPolicy = endpointPolicy;
         this.probe = probe;
         this.schemaDescriptor = schemaDescriptor;
+        this.credentialProtector = credentialProtector;
     }
 
     public async Task<AiConfigurationResponse> CreateAsync(
@@ -55,6 +58,7 @@ public sealed partial class AiConfigurationService : IAiConfigurationService
     {
         var draft = Validate(request);
         var configuration = CreateEntity(draft);
+        ApplyCredential(configuration, draft);
         await store.AddAsync(configuration, cancellationToken);
         await store.SaveChangesAsync(cancellationToken);
         return AiConfigurationMappings.ToResponse(configuration);
@@ -90,6 +94,7 @@ public sealed partial class AiConfigurationService : IAiConfigurationService
             source.MaxAttempts,
             source.DataRegion,
             source.RetentionClass);
+        configuration.CopyCredentialFrom(source);
         await store.AddAsync(configuration, cancellationToken);
         await store.SaveChangesAsync(cancellationToken);
         return AiConfigurationMappings.ToResponse(configuration);
@@ -111,8 +116,9 @@ public sealed partial class AiConfigurationService : IAiConfigurationService
             throw new RequestConflictException("已发布或已归档的 AI 配置不可原地修改，请创建新草稿。");
         }
 
-        var draft = Validate(request);
+        var draft = Validate(request, configuration);
         ApplyDraft(configuration, draft);
+        ApplyCredential(configuration, draft);
         await store.SaveChangesAsync(cancellationToken);
         return AiConfigurationMappings.ToResponse(configuration);
     }

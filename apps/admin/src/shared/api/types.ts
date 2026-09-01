@@ -71,7 +71,7 @@ export interface AiConfigurationDraftInput {
   protocol: AiProtocol;
   baseUrl: string;
   endpointPath: string;
-  credentialRef: string;
+  apiKey: string;
   authScheme: AiAuthScheme;
   model: string;
   apiVersion?: string | null;
@@ -87,9 +87,12 @@ export interface AiConfigurationDraftInput {
   retentionClass: string;
 }
 
-export interface AiConfiguration extends AiConfigurationDraftInput {
+export interface AiConfiguration extends Omit<AiConfigurationDraftInput, 'apiKey'> {
   id: string;
   publicRevisionId: string;
+  credentialRef: string;
+  hasCredential: boolean;
+  credentialSource: 'managed' | 'server';
   status: AiConfigurationStatus;
   isActive: boolean;
   createdAt: string;

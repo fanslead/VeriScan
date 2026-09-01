@@ -25,7 +25,7 @@ public sealed class ExternalAiConfigurationProbe(
             ExternalAiProtocolSupport.ValidateInputBudget(
                 configuration,
                 new AiModerationRequest(Guid.Empty, Guid.Empty, SyntheticContent, "zh-CN"));
-            if (!credentialResolver.TryResolve(configuration.CredentialRef, out var credential))
+            if (!credentialResolver.TryResolve(configuration, out var credential))
             {
                 result = ExternalAiResultMapping.Failure(
                     configuration,
