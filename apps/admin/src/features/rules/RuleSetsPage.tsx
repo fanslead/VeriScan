@@ -8,6 +8,7 @@ import type { RuleSet, RuleSetDraftInput } from '@/shared/api/types';
 import { ErrorState } from '@/shared/ui/ErrorState';
 import { PageIntro } from '@/shared/ui/PageIntro';
 import { RuleSetEditor } from './RuleSetEditor';
+import { ruleCategoryOptions } from './ruleSetFormModel';
 
 const statusMeta = {
   draft: { label: '草稿', color: 'amber' as const },
@@ -24,6 +25,9 @@ const formatDate = (value: string | null) =>
         minute: '2-digit',
       }).format(new Date(value))
     : '尚未执行';
+
+const categoryLabel = (category: string) =>
+  ruleCategoryOptions.find((item) => item.value === category)?.label ?? '其他分类';
 
 export function RuleSetsPage() {
   const [searchParams] = useSearchParams();
@@ -275,7 +279,7 @@ export function RuleSetsPage() {
                         rule.type === 'black' ? 'red' : rule.type === 'white' ? 'cyan' : 'amber'
                       }
                     >
-                      {rule.term} · {rule.category}
+                      {rule.term} · {categoryLabel(rule.category)}
                     </Tag>
                   ))}
                   {ruleSet.ruleCount > 8 ? <span>另有 {ruleSet.ruleCount - 8} 条</span> : null}
