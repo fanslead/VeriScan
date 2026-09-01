@@ -35,6 +35,24 @@ describe('管理 API DTO 适配', () => {
     });
   });
 
+  it('映射后端返回的应用规则绑定', () => {
+    const application = mapApplicationResponse({
+      id: 'app-1',
+      publicId: 'app_public_1',
+      name: '策略应用',
+      environment: 'test',
+      status: 'active',
+      activeKeyCount: 1,
+      ruleSetRevisionId: 'ruleset@42',
+      ruleSetName: '社区规则',
+      createdAt: '2026-09-01T00:00:00Z',
+      updatedAt: '2026-09-01T01:00:00Z',
+    });
+
+    expect(application.policyVersion).toBe('ruleset@42');
+    expect(application.policyName).toBe('社区规则');
+  });
+
   it('兼容 Key DisplayName，并保留一次性明文', () => {
     const keys = mapApiKeyListResponse(
       {

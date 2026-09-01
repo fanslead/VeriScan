@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Skeleton, Toast } from '@douyinfe/semi-ui';
 import { useNavigate, useParams } from 'react-router-dom';
-import { apiMode, moderationService } from '@/shared/api/services';
+import { moderationService } from '@/shared/api/services';
 import { ErrorState } from '@/shared/ui/ErrorState';
 import { ApplicationCredentialsCard } from './ApplicationCredentialsCard';
 import { ApplicationDecisionCard } from './ApplicationDecisionCard';
@@ -118,8 +118,7 @@ export function ApplicationDetailPage() {
       <section className="detail-grid detail-grid--lower">
         <ApplicationPolicyCard
           application={app}
-          isMock={apiMode === 'mock'}
-          onOpenRules={() => navigate('/rules')}
+          onOpenRules={() => navigate(`/rules?applicationId=${app.id}`)}
         />
         <ApplicationUsageCard
           applicationId={app.id}

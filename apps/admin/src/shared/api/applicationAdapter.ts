@@ -7,6 +7,8 @@ export interface ApplicationResponseDto {
   environment: 'test' | 'live' | null;
   status: 'active' | 'suspended' | 'archived';
   activeKeyCount: number;
+  ruleSetRevisionId: string | null;
+  ruleSetName: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -61,6 +63,9 @@ const toTransport = (value: unknown): ApplicationResponseDto => {
           ? 'archived'
           : 'suspended',
     activeKeyCount: numberValue(object.activeKeyCount),
+    ruleSetRevisionId:
+      object.ruleSetRevisionId === null ? null : stringValue(object.ruleSetRevisionId) || null,
+    ruleSetName: object.ruleSetName === null ? null : stringValue(object.ruleSetName) || null,
     createdAt: dateValue(object.createdAt),
     updatedAt: dateValue(object.updatedAt),
   };
@@ -96,8 +101,8 @@ export function mapApplicationResponse(value: unknown): Application {
     description: '',
     environment: environmentValue(dto.environment),
     status: mapStatus(dto.status),
-    policyName: null,
-    policyVersion: null,
+    policyName: dto.ruleSetName,
+    policyVersion: dto.ruleSetRevisionId,
     createdAt: dto.createdAt,
     lastActiveAt: null,
     totalRequests: null,

@@ -12,6 +12,8 @@ export type AiAuthScheme = 'bearer' | 'xApiKey' | 'apiKey';
 export type AiApiVersionLocation = 'none' | 'header' | 'query';
 export type AiDecodingMode = 'sendTemperatureZero' | 'omitTemperature' | 'providerFixed';
 export type AiConfigurationStatus = 'draft' | 'published' | 'archived';
+export type RuleSetStatus = 'draft' | 'published' | 'archived';
+export type WordRuleType = 'black' | 'suspicious' | 'white';
 
 export interface Application {
   id: string;
@@ -111,6 +113,53 @@ export interface AiConfigurationTestResult {
   inputTokens: number | null;
   outputTokens: number | null;
   failureCode: string | null;
+}
+
+export interface WordRuleDraftInput {
+  term: string;
+  type: WordRuleType;
+  category: string;
+  weight: number;
+}
+
+export interface WordRule extends WordRuleDraftInput {
+  id: string;
+  isEnabled: boolean;
+}
+
+export interface RuleSetDraftInput {
+  name: string;
+  rules: WordRuleDraftInput[];
+}
+
+export interface RuleSet {
+  id: string;
+  publicRevisionId: string;
+  name: string;
+  status: RuleSetStatus;
+  ruleCount: number;
+  rulesTruncated: boolean;
+  createdAt: string;
+  updatedAt: string;
+  lastValidatedAt: string | null;
+  lastValidatedChecksum: string | null;
+  publishedAt: string | null;
+  publishedChecksum: string | null;
+  applicationCount: number;
+  rules: WordRule[];
+}
+
+export interface RuleSetValidationIssue {
+  code: string;
+  message: string;
+  ruleIndex: number | null;
+}
+
+export interface RuleSetValidationResult {
+  valid: boolean;
+  checksum: string;
+  ruleCount: number;
+  issues: RuleSetValidationIssue[];
 }
 
 export interface ModerationRecord {

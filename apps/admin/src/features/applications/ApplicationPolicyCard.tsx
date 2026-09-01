@@ -4,11 +4,9 @@ import type { Application } from '@/shared/api/types';
 
 export function ApplicationPolicyCard({
   application,
-  isMock,
   onOpenRules,
 }: {
   application: Application;
-  isMock: boolean;
   onOpenRules: () => void;
 }) {
   return (
@@ -41,15 +39,15 @@ export function ApplicationPolicyCard({
       <div className="policy-facts">
         <div>
           <span>规则筛查</span>
-          <strong>{isMock ? '已启用' : '暂无数据'}</strong>
+          <strong>{application.policyVersion ? '已启用' : '未配置'}</strong>
         </div>
         <div>
           <span>边界判定</span>
-          <strong>{isMock ? '已启用' : '暂无数据'}</strong>
+          <strong>{application.policyVersion ? '版本固化' : '未配置'}</strong>
         </div>
         <div>
           <span>外部模型</span>
-          <strong>{isMock ? '按全局路由' : '暂无数据'}</strong>
+          <strong>按全局路由</strong>
         </div>
       </div>
     </Card>

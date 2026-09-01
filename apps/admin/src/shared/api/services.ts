@@ -12,6 +12,10 @@ import {
   mapModerationRecordListResponse,
   mapModerationRecordResponse,
   mapOverviewResponse,
+  mapRuleSetDraftInput,
+  mapRuleSetListResponse,
+  mapRuleSetResponse,
+  mapRuleSetValidationResponse,
 } from './realApiAdapter';
 import { MockApiClient } from './mockAdapter';
 import { useAuthStore } from '@/shared/auth/authStore';
@@ -31,6 +35,9 @@ import type {
   OverviewStats,
   Paginated,
   RevokeKeyInput,
+  RuleSet,
+  RuleSetDraftInput,
+  RuleSetValidationResult,
 } from './types';
 
 export type ApiMode = 'mock' | 'real';
@@ -118,6 +125,13 @@ export function createModerationService(client: ApiClient, mode: ApiMode = apiMo
     createApplication: async (input: CreateApplicationInput): Promise<Application> =>
       mapApplicationResponse(
         await client.post<unknown>('/applications', applicationRequest(input)),
+      ),
+
+    bindRuleSet: async (applicationId: string, publicRevisionId: string): Promise<Application> =>
+      mapApplicationResponse(
+        await client.put<unknown>(`/applications/${applicationId}/rule-set`, {
+          publicRevisionId,
+        }),
       ),
 
     listKeys: async (applicationId: string): Promise<ApiKey[]> =>
@@ -224,3 +238,35 @@ export function createAiConfigurationService(client: ApiClient) {
 }
 
 export const aiConfigurationService = createAiConfigurationService(apiClient);
+
+export function createRuleSetService(client: ApiClient) {
+  return {
+    list: async (): Promise<RuleSet[]> =>
+      mapRuleSetListResponse(await client.get<unknown>('/rule-sets')),
+
+    get: async (ruleSetId: string): Promise<RuleSet> =>
+      mapRuleSetResponse(await client.get<unknown>(`/rule-sets/${ruleSetId}`)),
+
+    create: async (input: RuleSetDraftInput): Promise<RuleSet> =>
+      mapRuleSetResponse(await client.post<unknown>('/rule-sets', mapRuleSetDraftInput(input))),
+
+    update: async (ruleSetId: string, input: RuleSetDraftInput): Promise<RuleSet> =>
+      mapRuleSetResponse(
+        await client.put<unknown>(`/rule-sets/${ruleSetId}`, mapRuleSetDraftInput(input)),
+      ),
+
+    createRevision: async (ruleSetId: string): Promise<RuleSet> =>
+      mapRuleSetResponse(await client.post<unknown>(`/rule-sets/${ruleSetId}/revisions`)),
+
+    validate: async (ruleSetId: string): Promise<RuleSetValidationResult> =>
+      mapRuleSetValidationResponse(await client.post<unknown>(`/rule-sets/${ruleSetId}/validate`)),
+
+    publish: async (ruleSetId: string): Promise<RuleSet> =>
+      mapRuleSetResponse(await client.post<unknown>(`/rule-sets/${ruleSetId}/publish`)),
+
+    archive: async (ruleSetId: string): Promise<RuleSet> =>
+      mapRuleSetResponse(await client.post<unknown>(`/rule-sets/${ruleSetId}/archive`)),
+  };
+}
+
+export const ruleSetService = createRuleSetService(apiClient);

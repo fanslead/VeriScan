@@ -26,8 +26,8 @@ const CreateApplicationPage = lazy(async () => ({
 const ModerationRecordsPage = lazy(async () => ({
   default: (await import('@/features/records/ModerationRecordsPage')).ModerationRecordsPage,
 }));
-const WorkspaceInfoPage = lazy(async () => ({
-  default: (await import('@/features/settings/WorkspaceInfoPage')).WorkspaceInfoPage,
+const RuleSetsPage = lazy(async () => ({
+  default: (await import('@/features/rules/RuleSetsPage')).RuleSetsPage,
 }));
 const AiConfigurationsPage = lazy(async () => ({
   default: (await import('@/features/ai/AiConfigurationsPage')).AiConfigurationsPage,
@@ -70,7 +70,7 @@ export function App() {
                 <Route path="records" element={<ModerationRecordsPage />} />
                 <Route path="records/:recordId" element={<ModerationRecordsPage />} />
                 <Route path="ai-settings" element={<AiConfigurationsPage />} />
-                <Route path="rules" element={<WorkspaceInfoPage kind="rules" />} />
+                <Route path="rules" element={<RuleSetsPage />} />
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Route>
             </Routes>

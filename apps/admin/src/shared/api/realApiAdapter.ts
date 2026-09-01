@@ -30,3 +30,9 @@ export {
   type AiConfigurationResponseDto,
   type AiConfigurationTestResponseDto,
 } from './aiConfigurationAdapter';
+export {
+  mapRuleSetDraftInput,
+  mapRuleSetListResponse,
+  mapRuleSetResponse,
+  mapRuleSetValidationResponse,
+} from './ruleSetAdapter';

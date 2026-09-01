@@ -6,6 +6,7 @@ import {
   applications,
   moderationRecords,
   overviewStats,
+  ruleSets,
 } from './mockData';
 import type {
   AiConfiguration,
@@ -21,6 +22,8 @@ import type {
   ModerationRecord,
   Paginated,
   RevokeKeyInput,
+  RuleSet,
+  RuleSetDraftInput,
 } from './types';
 
 export class MockApiError extends Error {
@@ -63,6 +66,8 @@ const findKey = (id: string) => apiKeys.find((item) => item.id === id);
 
 const findAiConfiguration = (id: string) => aiConfigurations.find((item) => item.id === id);
 
+const findRuleSet = (id: string) => ruleSets.find((item) => item.id === id);
+
 const parseQuery = (path: string) => {
   const url = new URL(path, window.location.origin);
   return { pathname: url.pathname, search: url.searchParams };
@@ -79,6 +84,16 @@ export class MockApiClient implements ApiClient {
 
     if (pathname === '/ai/configurations') {
       return result({ items: aiConfigurations }) as T;
+    }
+
+    if (pathname === '/rule-sets') {
+      return result({ items: ruleSets }) as T;
+    }
+
+    const ruleSetMatch = pathname.match(/^\/rule-sets\/([^/]+)$/);
+    if (ruleSetMatch) {
+      const ruleSet = findRuleSet(ruleSetMatch[1]);
+      return ruleSet ? (result(ruleSet) as T) : notFound('规则集不存在');
     }
 
     const aiConfigurationMatch = pathname.match(/^\/ai\/configurations\/([^/]+)$/);
@@ -187,6 +202,97 @@ export class MockApiClient implements ApiClient {
 
   async post<T>(path: string, body?: unknown): Promise<T> {
     await wait(320);
+    if (path === '/rule-sets') {
+      const input = body as RuleSetDraftInput;
+      const now = new Date().toISOString();
+      const id = `rules-${Date.now()}`;
+      const ruleSet: RuleSet = {
+        id,
+        publicRevisionId: `ruleset@${Date.now()}`,
+        name: input.name,
+        status: 'draft',
+        ruleCount: input.rules.length,
+        rulesTruncated: false,
+        createdAt: now,
+        updatedAt: now,
+        lastValidatedAt: null,
+        lastValidatedChecksum: null,
+        publishedAt: null,
+        publishedChecksum: null,
+        applicationCount: 0,
+        rules: input.rules.map((rule, index) => ({
+          ...rule,
+          id: `${id}-word-${index}`,
+          isEnabled: true,
+        })),
+      };
+      ruleSets.unshift(ruleSet);
+      return result(ruleSet) as T;
+    }
+
+    const ruleValidationMatch = path.match(/^\/rule-sets\/([^/]+)\/validate$/);
+    if (ruleValidationMatch) {
+      const ruleSet = findRuleSet(ruleValidationMatch[1]);
+      if (!ruleSet) return notFound('规则集不存在');
+      const checksum = `${ruleSet.id.replace(/[^a-z0-9]/gi, 'a').padEnd(64, '0')}`.slice(0, 64);
+      ruleSet.lastValidatedAt = new Date().toISOString();
+      ruleSet.lastValidatedChecksum = checksum;
+      return result({ valid: true, checksum, ruleCount: ruleSet.ruleCount, issues: [] }) as T;
+    }
+
+    const ruleRevisionMatch = path.match(/^\/rule-sets\/([^/]+)\/revisions$/);
+    if (ruleRevisionMatch) {
+      const source = findRuleSet(ruleRevisionMatch[1]);
+      if (!source) return notFound('规则集不存在');
+      const now = new Date().toISOString();
+      const revision: RuleSet = {
+        ...structuredClone(source),
+        id: `rules-${Date.now()}`,
+        publicRevisionId: `ruleset@${Date.now()}`,
+        name: `${source.name} · 新版本`,
+        status: 'draft',
+        rulesTruncated: false,
+        createdAt: now,
+        updatedAt: now,
+        lastValidatedAt: null,
+        lastValidatedChecksum: null,
+        publishedAt: null,
+        publishedChecksum: null,
+        applicationCount: 0,
+      };
+      ruleSets.unshift(revision);
+      return result(revision) as T;
+    }
+
+    const ruleLifecycleMatch = path.match(/^\/rule-sets\/([^/]+)\/(publish|archive)$/);
+    if (ruleLifecycleMatch) {
+      const ruleSet = findRuleSet(ruleLifecycleMatch[1]);
+      if (!ruleSet) return notFound('规则集不存在');
+      if (ruleLifecycleMatch[2] === 'publish') {
+        if (!ruleSet.lastValidatedChecksum) {
+          throw new MockApiError({
+            code: 'conflict',
+            message: '请先完成规则校验',
+            retryable: false,
+          });
+        }
+        ruleSet.status = 'published';
+        ruleSet.publishedAt = new Date().toISOString();
+        ruleSet.publishedChecksum = ruleSet.lastValidatedChecksum;
+      } else {
+        if (ruleSet.applicationCount > 0) {
+          throw new MockApiError({
+            code: 'conflict',
+            message: '仍有应用绑定该版本',
+            retryable: false,
+          });
+        }
+        ruleSet.status = 'archived';
+      }
+      ruleSet.updatedAt = new Date().toISOString();
+      return result(ruleSet) as T;
+    }
+
     if (path === '/ai/configurations') {
       const input = body as AiConfigurationDraftInput;
       const now = new Date().toISOString();
@@ -397,6 +503,42 @@ export class MockApiClient implements ApiClient {
 
   async put<T>(path: string, body?: unknown): Promise<T> {
     await wait(300);
+    const bindingMatch = path.match(/^\/applications\/([^/]+)\/rule-set$/);
+    if (bindingMatch) {
+      const application = findApplication(bindingMatch[1]);
+      if (!application) return notFound('应用不存在');
+      const revisionId = (body as { publicRevisionId?: string }).publicRevisionId;
+      const next = ruleSets.find((item) => item.publicRevisionId === revisionId);
+      if (!next || next.status !== 'published') return notFound('已发布规则集不存在');
+      const previous = ruleSets.find((item) => item.publicRevisionId === application.policyVersion);
+      if (previous) previous.applicationCount = Math.max(0, previous.applicationCount - 1);
+      next.applicationCount += 1;
+      application.policyName = next.name;
+      application.policyVersion = next.publicRevisionId;
+      return result(application) as T;
+    }
+
+    const ruleSetMatch = path.match(/^\/rule-sets\/([^/]+)$/);
+    if (ruleSetMatch) {
+      const ruleSet = findRuleSet(ruleSetMatch[1]);
+      if (!ruleSet) return notFound('规则集不存在');
+      if (ruleSet.status !== 'draft') {
+        throw new MockApiError({ code: 'conflict', message: '发布版本不可修改', retryable: false });
+      }
+      const input = body as RuleSetDraftInput;
+      ruleSet.name = input.name;
+      ruleSet.rules = input.rules.map((rule, index) => ({
+        ...rule,
+        id: `${ruleSet.id}-word-${index}`,
+        isEnabled: true,
+      }));
+      ruleSet.ruleCount = ruleSet.rules.length;
+      ruleSet.updatedAt = new Date().toISOString();
+      ruleSet.lastValidatedAt = null;
+      ruleSet.lastValidatedChecksum = null;
+      return result(ruleSet) as T;
+    }
+
     const aiMatch = path.match(/^\/ai\/configurations\/([^/]+)$/);
     if (aiMatch) {
       const configuration = findAiConfiguration(aiMatch[1]);
