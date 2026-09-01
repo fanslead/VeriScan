@@ -9,6 +9,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using VeriScan.Api.Authentication;
+using VeriScan.Application.Abstractions;
 using VeriScan.Domain.Entities;
 using VeriScan.Infrastructure.Persistence;
 
@@ -36,6 +37,14 @@ public sealed class ApiTestFactory : WebApplicationFactory<Program>
             services.RemoveAll<IDbContextOptionsConfiguration<VeriScanDbContext>>();
             services.AddDbContext<VeriScanDbContext>(options =>
                 options.UseInMemoryDatabase(databaseName));
+            services.RemoveAll<IAiEndpointPolicy>();
+            services.RemoveAll<IAiConfigurationProbe>();
+            services.RemoveAll<IModerationAiClient>();
+            services.RemoveAll<IAiSchemaDescriptor>();
+            services.AddSingleton<IAiEndpointPolicy, TestAiEndpointPolicy>();
+            services.AddSingleton<IAiConfigurationProbe, TestAiConfigurationProbe>();
+            services.AddSingleton<IModerationAiClient, TestModerationAiClient>();
+            services.AddSingleton<IAiSchemaDescriptor, TestAiSchemaDescriptor>();
             services.AddAuthentication()
                 .AddScheme<AuthenticationSchemeOptions, TestAdminAuthenticationHandler>(
                     "TestAdmin",

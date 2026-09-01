@@ -38,6 +38,17 @@ ASPNETCORE_URLS='http://127.0.0.1:5000' \
 dotnet run --project apps/api/Api
 ```
 
+外部 AI 默认没有出站主机权限，因此不会因为数据库里出现任意 URL 就发起请求。启用前要显式设置允许主机和凭据引用；数据库只保存 `config://ProviderA`，明文通过服务端配置注入：
+
+```bash
+ExternalAi__AllowedHosts__0='api.openai.com' \
+ExternalAi__AllowedPorts__0=443 \
+ExternalAi__Credentials__ProviderA='replace-with-provider-secret' \
+dotnet run --project apps/api/Api
+```
+
+不要把供应商密钥写入 `appsettings*.json`、管理台表单或 Git。生产环境应以 Vault/KMS 实现替换默认配置解析器，并用出站网络策略再次限制同一域名集合。
+
 管理后台使用 Vite；本地开发默认地址为 `http://127.0.0.1:5173`。真实模式先将 `apps/admin/.env.example` 复制为 `apps/admin/.env.local`，并在 Keycloak 创建本地用户、授予 `veriscan-admin` 角色。Mock 数据必须通过 `VITE_API_MODE=mock` 显式启用，不会在真实模式或 OIDC 配置缺失时自动降级。
 
 仓库仍在按 [实施计划](docs/IMPLEMENTATION_PLAN.md) 分阶段建设。生产架构和协议边界以 [技术方案](VeriScan-CMS-%E6%8A%80%E6%9C%AF%E6%96%B9%E6%A1%88-v2.md) 为准。

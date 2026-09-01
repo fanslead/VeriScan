@@ -18,6 +18,7 @@ public sealed class RuleModerationEngineTests
         var result = engine.Evaluate("明鉴请加微信", rules);
 
         Assert.Equal(ModerationDecision.Review, result.Decision);
+        Assert.True(result.RequiresAi);
         Assert.Equal("policy_required", result.ReviewSource);
     }
 
@@ -34,5 +35,6 @@ public sealed class RuleModerationEngineTests
         var result = engine.Evaluate("官方客服请加微信", rules);
 
         Assert.Equal(ModerationDecision.Pass, result.Decision);
+        Assert.False(result.RequiresAi);
     }
 }

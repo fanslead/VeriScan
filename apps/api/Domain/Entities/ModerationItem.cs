@@ -63,9 +63,21 @@ public sealed class ModerationItem
 
     public string Route { get; private set; } = string.Empty;
 
-    public string ReasonCodesText { get; private set; } = string.Empty;
+    public string ReasonCodesText { get; private set; } = "[]";
 
-    public string CategoriesText { get; private set; } = string.Empty;
+    public string CategoriesText { get; private set; } = "[]";
+
+    public string EvidenceText { get; private set; } = "[]";
+
+    public string? AiConfigurationRevision { get; private set; }
+
+    public string? ProviderRequestId { get; private set; }
+
+    public int? AiInputTokens { get; private set; }
+
+    public int? AiOutputTokens { get; private set; }
+
+    public string? AiFailureCode { get; private set; }
 
     public string? ErrorCode { get; private set; }
 
@@ -86,7 +98,13 @@ public sealed class ModerationItem
         string route,
         string reasonCodesText,
         string categoriesText,
-        DateTimeOffset completedAt)
+        string evidenceText,
+        DateTimeOffset completedAt,
+        string? aiConfigurationRevision = null,
+        string? providerRequestId = null,
+        int? aiInputTokens = null,
+        int? aiOutputTokens = null,
+        string? aiFailureCode = null)
     {
         ProcessingStatus = ModerationProcessingStatus.Completed;
         Decision = decision;
@@ -97,6 +115,12 @@ public sealed class ModerationItem
         Route = route;
         ReasonCodesText = reasonCodesText;
         CategoriesText = categoriesText;
+        EvidenceText = evidenceText;
+        AiConfigurationRevision = aiConfigurationRevision;
+        ProviderRequestId = providerRequestId;
+        AiInputTokens = aiInputTokens;
+        AiOutputTokens = aiOutputTokens;
+        AiFailureCode = aiFailureCode;
         MachineCompletedAt = completedAt;
         FinalizedAt = completedAt;
     }

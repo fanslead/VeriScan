@@ -24,10 +24,16 @@ public sealed partial class AdminReadStore(VeriScanDbContext dbContext) : IAdmin
             item.Route,
             item.ReasonCodesText,
             item.CategoriesText,
+            item.EvidenceText,
             item.ErrorCode,
             item.CreatedAt,
             item.MachineCompletedAt,
-            null);
+            null,
+            item.AiConfigurationRevision,
+            item.ProviderRequestId,
+            item.AiInputTokens,
+            item.AiOutputTokens,
+            item.AiFailureCode);
 
     public async Task<AdminOverviewReadData> GetOverviewAsync(
         DateTimeOffset from,

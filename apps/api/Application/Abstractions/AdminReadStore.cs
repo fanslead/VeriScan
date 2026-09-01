@@ -35,10 +35,16 @@ public sealed record AdminModerationRecordReadData(
     string Route,
     string ReasonCodesJson,
     string CategoriesJson,
+    string EvidenceJson,
     string? ErrorCode,
     DateTimeOffset CreatedAt,
     DateTimeOffset? MachineCompletedAt,
-    string? PolicyVersion);
+    string? PolicyVersion,
+    string? AiConfigurationRevision,
+    string? ProviderRequestId,
+    int? AiInputTokens,
+    int? AiOutputTokens,
+    string? AiFailureCode);
 
 public sealed record AdminModerationRecordPageReadData(
     IReadOnlyList<AdminModerationRecordReadData> Items,

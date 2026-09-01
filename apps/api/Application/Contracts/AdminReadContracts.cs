@@ -51,7 +51,12 @@ public sealed record ModerationRecordResponse(
     string? PolicyVersion,
     string? ErrorCode,
     string? Route,
-    IReadOnlyList<ModerationCategoryResponse> Categories);
+    IReadOnlyList<ModerationCategoryResponse> Categories,
+    string? AiConfigurationRevision,
+    string? ProviderRequestId,
+    int? AiInputTokens,
+    int? AiOutputTokens,
+    string? AiFailureCode);
 
 /// <summary>管理端审核记录分页结果。</summary>
 public sealed record ModerationRecordPageResponse(

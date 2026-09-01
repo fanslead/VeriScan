@@ -11,13 +11,15 @@ public interface IRuleModerationEngine
 
 public sealed record RuleEvaluation(
     ModerationDecision Decision,
+    bool RequiresAi,
     string? ReviewSource,
     bool Degraded,
     decimal? RiskScore,
     string? ScoreSource,
     string Route,
     IReadOnlyList<string> ReasonCodes,
-    IReadOnlyList<RuleCategory> Categories);
+    IReadOnlyList<RuleCategory> Categories,
+    IReadOnlyList<string> Evidence);
 
 public sealed record RuleCategory(string Code, decimal? RiskScore);
 
@@ -37,13 +39,15 @@ public sealed class RuleModerationEngine : IRuleModerationEngine
         {
             return new RuleEvaluation(
                 ModerationDecision.Reject,
+                false,
                 null,
                 false,
                 0.99m,
                 "deterministic_rule",
                 "local_rules",
                 ["RULE_BLACK_WORD"],
-                blackMatches.Select(rule => new RuleCategory(rule.Category, 0.99m)).Distinct().ToArray());
+                blackMatches.Select(rule => new RuleCategory(rule.Category, 0.99m)).Distinct().ToArray(),
+                []);
         }
 
         var hasRelatedWhiteMatch = whiteMatches.Any(whiteRule =>
@@ -54,36 +58,42 @@ public sealed class RuleModerationEngine : IRuleModerationEngine
         {
             return new RuleEvaluation(
                 ModerationDecision.Review,
+                true,
                 "policy_required",
                 false,
                 null,
                 null,
                 "local_rules",
                 ["RULE_SUSPICIOUS_WORD", "CALLER_REVIEW_REQUIRED"],
-                suspiciousMatches.Select(rule => new RuleCategory(rule.Category, null)).Distinct().ToArray());
+                suspiciousMatches.Select(rule => new RuleCategory(rule.Category, null)).Distinct().ToArray(),
+                []);
         }
 
         if (whiteMatches.Length > 0)
         {
             return new RuleEvaluation(
                 ModerationDecision.Pass,
+                false,
                 null,
                 false,
                 0.01m,
                 "deterministic_rule",
                 "local_rules",
                 ["RULE_WHITE_WORD"],
+                [],
                 []);
         }
 
         return new RuleEvaluation(
             ModerationDecision.Review,
+            true,
             "policy_required",
             false,
             null,
             null,
             "local_rules",
             ["AI_ROUTE_NOT_CONFIGURED", "CALLER_REVIEW_REQUIRED"],
+            [],
             []);
     }
 

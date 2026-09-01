@@ -23,6 +23,7 @@ public sealed class ModerationService(
     IModerationStore moderationStore,
     IWordRuleStore wordRuleStore,
     IRuleModerationEngine ruleModerationEngine,
+    IModerationAiClient moderationAiClient,
     IContentHashService contentHashService) : IModerationService
 {
     private const int MaximumContentBytes = 64 * 1024;
@@ -84,7 +85,20 @@ public sealed class ModerationService(
                 item.Language,
                 item.ContentType,
                 submittedAt);
-            var evaluation = ruleModerationEngine.Evaluate(item.Content, rules);
+            var ruleEvaluation = ruleModerationEngine.Evaluate(item.Content, rules);
+            var evaluation = ruleEvaluation;
+            AiModerationResult? aiResult = null;
+            if (ruleEvaluation.RequiresAi)
+            {
+                aiResult = await moderationAiClient.ModerateAsync(
+                    new AiModerationRequest(
+                        principal.TenantId,
+                        principal.ApplicationId,
+                        item.Content,
+                        item.Language),
+                    cancellationToken);
+                evaluation = AiModerationMappings.ToEvaluation(aiResult, ruleEvaluation);
+            }
 
             moderationItem.Complete(
                 evaluation.Decision,
@@ -95,7 +109,13 @@ public sealed class ModerationService(
                 evaluation.Route,
                 JsonSerializer.Serialize(evaluation.ReasonCodes),
                 JsonSerializer.Serialize(evaluation.Categories),
-                DateTimeOffset.UtcNow);
+                JsonSerializer.Serialize(evaluation.Evidence),
+                DateTimeOffset.UtcNow,
+                aiResult?.ConfigurationRevision,
+                aiResult?.ProviderRequestId,
+                aiResult?.InputTokens,
+                aiResult?.OutputTokens,
+                aiResult?.FailureCode);
             moderationRequest.AddItem(moderationItem);
         }
 

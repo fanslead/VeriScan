@@ -39,6 +39,10 @@ public sealed class ModerationItemConfiguration : IEntityTypeConfiguration<Moder
         builder.Property(item => item.Route).HasMaxLength(64).IsRequired();
         builder.Property(item => item.ReasonCodesText).HasColumnType("jsonb").IsRequired();
         builder.Property(item => item.CategoriesText).HasColumnType("jsonb").IsRequired();
+        builder.Property(item => item.EvidenceText).HasColumnType("jsonb").IsRequired();
+        builder.Property(item => item.AiConfigurationRevision).HasMaxLength(64);
+        builder.Property(item => item.ProviderRequestId).HasMaxLength(256);
+        builder.Property(item => item.AiFailureCode).HasMaxLength(64);
         builder.Property(item => item.RiskScore).HasPrecision(6, 5);
         builder.HasIndex(item => new { item.ApplicationId, item.CreatedAt });
         builder.HasIndex(item => new { item.RequestId, item.ClientItemId }).IsUnique();

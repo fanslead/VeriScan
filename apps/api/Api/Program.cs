@@ -79,8 +79,10 @@ builder.Services.AddScoped<IApplicationService, ApplicationService>();
 builder.Services.AddScoped<IApiKeyService, ApiKeyService>();
 builder.Services.AddScoped<IModerationService, ModerationService>();
 builder.Services.AddScoped<IAdminReadService, AdminReadService>();
+builder.Services.AddScoped<IAiConfigurationService, AiConfigurationService>();
 builder.Services.AddSingleton<IRuleModerationEngine, RuleModerationEngine>();
 builder.Services.AddVeriScanInfrastructure(builder.Configuration);
+builder.Services.AddVeriScanExternalAi(builder.Configuration);
 
 var app = builder.Build();
 
@@ -109,6 +111,7 @@ app.MapApplicationEndpoints();
 app.MapApiKeyEndpoints();
 app.MapModerationEndpoints();
 app.MapAdminReadEndpoints();
+app.MapAiConfigurationEndpoints();
 
 app.Run();
 

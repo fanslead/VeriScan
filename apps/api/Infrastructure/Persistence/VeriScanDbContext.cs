@@ -15,6 +15,8 @@ public sealed class VeriScanDbContext(DbContextOptions<VeriScanDbContext> option
 
     public DbSet<WordRule> WordRules => Set<WordRule>();
 
+    public DbSet<AiModelConfiguration> AiModelConfigurations => Set<AiModelConfiguration>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(VeriScanDbContext).Assembly);

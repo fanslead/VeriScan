@@ -44,6 +44,7 @@ internal static class AdminReadMappings
     {
         var reasonCodes = DeserializeReasonCodes(data.ReasonCodesJson);
         var categories = DeserializeCategories(data.CategoriesJson);
+        var evidence = DeserializeReasonCodes(data.EvidenceJson);
         var decision = ParseDecision(data.Decision);
         int? latency = data.MachineCompletedAt.HasValue
             ? Math.Max(0, (int)Math.Round(
@@ -67,14 +68,16 @@ internal static class AdminReadMappings
             latency,
             data.CreatedAt,
             reasonCodes,
-            reasonCodes
-                .Concat(categories.Select(category => category.Code))
-                .Distinct(StringComparer.Ordinal)
-                .ToArray(),
+            evidence,
             data.PolicyVersion,
             data.ErrorCode,
             data.Route,
-            categories);
+            categories,
+            data.AiConfigurationRevision,
+            data.ProviderRequestId,
+            data.AiInputTokens,
+            data.AiOutputTokens,
+            data.AiFailureCode);
     }
 
     private static decimal? CalculateRate(long count, long total)
@@ -99,7 +102,7 @@ internal static class AdminReadMappings
         return route switch
         {
             "local_rules" or "rules" => 1,
-            "external_ai" or "ai" => 2,
+            var value when value.StartsWith("external_ai", StringComparison.Ordinal) => 2,
             _ => null
         };
     }

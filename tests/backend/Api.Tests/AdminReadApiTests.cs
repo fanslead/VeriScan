@@ -77,8 +77,7 @@ public sealed class AdminReadApiTests : IClassFixture<ApiTestFactory>
         Assert.Null(record.PolicyVersion);
         Assert.NotEmpty(record.ContentHash);
         Assert.NotEmpty(record.ReasonCodes);
-        Assert.Contains(record.Evidence, evidence =>
-            evidence is "AI_ROUTE_NOT_CONFIGURED" or "RULE_SUSPICIOUS_WORD" or "CALLER_REVIEW_REQUIRED");
+        Assert.Empty(record.Evidence);
         Assert.Contains(record.ContentPreview, ReviewPreviews);
 
         using var detailRequest = new HttpRequestMessage(
