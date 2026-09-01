@@ -2,10 +2,13 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.IdentityModel.Tokens;
 using VeriScan.Api.Authentication;
 using VeriScan.Api.Diagnostics;
 using VeriScan.Api.Endpoints;
+using VeriScan.Api.Health;
 using VeriScan.Api.Middleware;
 using VeriScan.Api.OpenApi;
 using VeriScan.Application.Services;
@@ -25,6 +28,8 @@ if (builder.Environment.IsProduction() && string.IsNullOrWhiteSpace(adminAuthent
 builder.Services.AddOpenApi(options => options.AddDocumentTransformer<ApiDocumentTransformer>());
 builder.Services.AddProblemDetails();
 builder.Services.AddExceptionHandler<ApiExceptionHandler>();
+builder.Services.AddHealthChecks()
+    .AddCheck<DatabaseReadinessHealthCheck>("postgres", tags: ["ready"]);
 builder.Services.AddVeriScanObservability(
     builder.Configuration,
     builder.Environment.ApplicationName);
@@ -99,11 +104,17 @@ app.UseStatusCodePages();
 app.UseAuthentication();
 app.UseAuthorization();
 
-if (app.Configuration.GetValue<bool>("Database:AutoMigrate"))
+var migrateOnly = args.Contains("--migrate", StringComparer.Ordinal);
+if (migrateOnly || app.Configuration.GetValue<bool>("Database:AutoMigrate"))
 {
     await using var scope = app.Services.CreateAsyncScope();
     var initializer = scope.ServiceProvider.GetRequiredService<DatabaseInitializer>();
     await initializer.InitializeAsync(CancellationToken.None);
+}
+
+if (migrateOnly)
+{
+    return;
 }
 
 if (app.Environment.IsDevelopment())
@@ -115,6 +126,26 @@ app.MapGet("/healthz", () => TypedResults.Ok(new { status = "ok" }))
     .WithName("Health")
     .WithSummary("服务健康检查")
     .Produces(StatusCodes.Status200OK);
+app.MapHealthChecks("/readyz", new HealthCheckOptions
+{
+    Predicate = registration => registration.Tags.Contains("ready"),
+    ResponseWriter = static async (context, report) =>
+    {
+        context.Response.ContentType = "application/json; charset=utf-8";
+        await context.Response.WriteAsJsonAsync(new
+        {
+            status = report.Status.ToString().ToLowerInvariant(),
+            checks = report.Entries.Select(entry => new
+            {
+                name = entry.Key,
+                status = entry.Value.Status.ToString().ToLowerInvariant(),
+                description = entry.Value.Description
+            })
+        });
+    }
+})
+    .WithName("Readiness")
+    .WithSummary("服务接流量就绪检查");
 app.MapApplicationEndpoints();
 app.MapApiKeyEndpoints();
 app.MapModerationEndpoints();

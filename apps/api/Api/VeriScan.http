@@ -8,6 +8,9 @@
 ### 健康检查
 GET {{baseUrl}}/healthz
 
+### 就绪检查
+GET {{baseUrl}}/readyz
+
 ### 创建应用
 POST {{baseUrl}}/api/admin/v1/applications
 Authorization: Bearer {{adminToken}}

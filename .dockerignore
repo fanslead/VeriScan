@@ -1,0 +1,15 @@
+.git
+.github
+.config
+.agents
+.skills
+**/.DS_Store
+**/bin
+**/obj
+**/node_modules
+**/dist
+**/coverage
+**/TestResults
+infra/.env
+*.user
+*.suo
