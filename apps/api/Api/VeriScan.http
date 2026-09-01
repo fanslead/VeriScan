@@ -1,0 +1,76 @@
+@baseUrl = http://localhost:5000
+@adminToken = 从本地 Keycloak 获取的 Bearer Token
+@applicationId = 00000000-0000-0000-0000-000000000000
+@keyId = 00000000-0000-0000-0000-000000000000
+@apiKey = vsk_test_public-key-id.secret
+
+### 健康检查
+GET {{baseUrl}}/healthz
+
+### 创建应用
+POST {{baseUrl}}/api/admin/v1/applications
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "name": "内容服务",
+  "environment": "test"
+}
+
+### 查询应用列表
+GET {{baseUrl}}/api/admin/v1/applications
+Authorization: Bearer {{adminToken}}
+
+### 查询应用详情
+GET {{baseUrl}}/api/admin/v1/applications/{{applicationId}}
+Authorization: Bearer {{adminToken}}
+
+### 创建应用 API Key，只在响应中展示一次明文
+POST {{baseUrl}}/api/admin/v1/applications/{{applicationId}}/api-keys
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "expiresAt": "2027-03-01T00:00:00Z",
+  "scopes": ["moderation:submit", "moderation:read"]
+}
+
+### 查询应用 API Key 脱敏列表
+GET {{baseUrl}}/api/admin/v1/applications/{{applicationId}}/api-keys
+Authorization: Bearer {{adminToken}}
+
+### 轮换应用 API Key
+POST {{baseUrl}}/api/admin/v1/applications/{{applicationId}}/api-keys/{{keyId}}/rotate
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "expiresAt": "2027-03-01T00:00:00Z",
+  "revokeOldKey": false,
+  "scopes": ["moderation:submit", "moderation:read"]
+}
+
+### 撤销应用 API Key
+DELETE {{baseUrl}}/api/admin/v1/applications/{{applicationId}}/api-keys/{{keyId}}
+Authorization: Bearer {{adminToken}}
+
+### 提交批量审核
+POST {{baseUrl}}/api/v1/moderation/batches
+X-API-Key: {{apiKey}}
+Content-Type: application/json
+
+{
+  "mode": "sync",
+  "items": [
+    {
+      "id": "item-001",
+      "content": "待审核文本",
+      "language": "zh-CN",
+      "contentType": "plain_text"
+    }
+  ]
+}
+
+### 查询审核批次
+GET {{baseUrl}}/api/v1/moderation/batches/00000000-0000-0000-0000-000000000000
+X-API-Key: {{apiKey}}

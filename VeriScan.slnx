@@ -1,0 +1,26 @@
+<Solution>
+  <Configurations>
+    <Platform Name="Any CPU" />
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Folder Name="/apps/" />
+  <Folder Name="/apps/api/" />
+  <Folder Name="/apps/api/Api/">
+    <Project Path="apps/api/Api/Api.csproj" />
+  </Folder>
+  <Folder Name="/apps/api/Application/">
+    <Project Path="apps/api/Application/Application.csproj" />
+  </Folder>
+  <Folder Name="/apps/api/Domain/">
+    <Project Path="apps/api/Domain/Domain.csproj" />
+  </Folder>
+  <Folder Name="/apps/api/Infrastructure/">
+    <Project Path="apps/api/Infrastructure/Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/tests/" />
+  <Folder Name="/tests/backend/" />
+  <Folder Name="/tests/backend/Api.Tests/">
+    <Project Path="tests/backend/Api.Tests/Api.Tests.csproj" />
+  </Folder>
+</Solution>
