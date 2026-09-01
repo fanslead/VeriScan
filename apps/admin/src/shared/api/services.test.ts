@@ -14,6 +14,23 @@ class RecordingClient implements ApiClient {
 
   async get<T>(path: string): Promise<T> {
     this.calls.push({ method: 'GET', path });
+    if (path === '/applications/app-1/usage') {
+      return {
+        applicationId: 'app-1',
+        apiKeyId: null,
+        dataFrom: '2026-08-25T00:00:00Z',
+        dataThrough: '2026-09-01T00:00:00Z',
+        requestCount: 8,
+        itemCount: 10,
+        passCount: 7,
+        rejectCount: 2,
+        reviewCount: 1,
+        aiCallCount: 3,
+        aiInputTokens: 120,
+        aiOutputTokens: 30,
+        aiFailureCount: 0,
+      } as T;
+    }
     if (path === '/applications/app-1/api-keys') {
       return {
         items: [
@@ -174,5 +191,24 @@ describe('真实 API service contract', () => {
       scopes: ['moderation:submit'],
     });
     expect(client.calls[3].config).toBeUndefined();
+  });
+
+  it('使用独立用量端点读取应用事实统计', async () => {
+    const client = new RecordingClient();
+    const service = createModerationService(client, 'real');
+
+    const usage = await service.getApplicationUsage('app-1');
+
+    expect(client.calls[0]).toMatchObject({
+      method: 'GET',
+      path: '/applications/app-1/usage',
+    });
+    expect(usage).toMatchObject({
+      applicationId: 'app-1',
+      requestCount: 8,
+      itemCount: 10,
+      reviewCount: 1,
+      aiInputTokens: 120,
+    });
   });
 });

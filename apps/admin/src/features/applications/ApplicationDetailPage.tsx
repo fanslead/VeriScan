@@ -24,6 +24,11 @@ export function ApplicationDetailPage() {
     queryFn: () => moderationService.listKeys(appId),
     enabled: Boolean(appId),
   });
+  const usage = useQuery({
+    queryKey: ['application-usage', appId],
+    queryFn: () => moderationService.getApplicationUsage(appId),
+    enabled: Boolean(appId),
+  });
   const toggleMutation = useMutation({
     mutationFn: (nextStatus: 'active' | 'paused') =>
       moderationService.setApplicationStatus(appId, nextStatus),
@@ -51,34 +56,40 @@ export function ApplicationDetailPage() {
 
   const app = application.data;
   const activeKeys = keys.data?.filter((key) => key.status === 'active') ?? [];
-  const hasUsage = app.totalRequests !== null && app.rejectRate !== null && app.reviewRate !== null;
-  const passRate = hasUsage
-    ? Math.max(0, 100 - (app.rejectRate ?? 0) - (app.reviewRate ?? 0))
-    : null;
+  const usageTotal = usage.data?.itemCount ?? 0;
+  const usageRate = (count: number | undefined) =>
+    usageTotal > 0 && count !== undefined ? (count * 100) / usageTotal : null;
+  const aiRate = usageRate(usage.data?.aiCallCount);
+  const reviewRate = usageRate(usage.data?.reviewCount);
+  const completionRate = usageRate(
+    usage.data ? usage.data.passCount + usage.data.rejectCount + usage.data.reviewCount : undefined,
+  );
+  const displayRate = (value: number | null) =>
+    value === null ? '暂无统计' : `${value.toFixed(1)}%`;
   const rail = [
     {
       label: '规则筛查',
-      value: apiMode === 'mock' ? '98.3%' : '暂无统计',
+      value: displayRate(aiRate === null ? null : Math.max(0, 100 - aiRate)),
       tone: 'teal' as const,
-      detail: apiMode === 'mock' ? '快速完成' : '暂无数据',
+      detail: aiRate === null ? '暂无数据' : '本地规则终结',
     },
     {
       label: '语义判断',
-      value: app.reviewRate === null ? '暂无统计' : `${app.reviewRate.toFixed(1)}%`,
+      value: displayRate(aiRate),
       tone: 'amber' as const,
-      detail: app.reviewRate === null ? '暂无数据' : '边界内容',
+      detail: aiRate === null ? '暂无数据' : '外部模型调用',
     },
     {
       label: '最终结论',
-      value: apiMode === 'mock' ? '100%' : '暂无统计',
+      value: displayRate(completionRate),
       tone: 'teal' as const,
-      detail: apiMode === 'mock' ? '机器已完成' : '暂无数据',
+      detail: completionRate === null ? '暂无数据' : '机器终态覆盖',
     },
     {
       label: '建议复核',
-      value: app.reviewRate === null ? '暂无统计' : `${app.reviewRate.toFixed(1)}%`,
+      value: displayRate(reviewRate),
       tone: 'amber' as const,
-      detail: app.reviewRate === null ? '暂无数据' : '由调用方处理',
+      detail: reviewRate === null ? '暂无数据' : '由调用方处理',
     },
   ];
 
@@ -90,7 +101,11 @@ export function ApplicationDetailPage() {
         onBack={() => navigate('/applications')}
         onToggle={() => toggleMutation.mutate(app.status === 'active' ? 'paused' : 'active')}
       />
-      <ApplicationSummary application={app} activeKeyCount={activeKeys.length} />
+      <ApplicationSummary
+        activeKeyCount={activeKeys.length}
+        usage={usage.data}
+        usageLoading={usage.isPending}
+      />
       <section className="detail-grid">
         <ApplicationDecisionCard nodes={rail} policyVersion={app.policyVersion} />
         <ApplicationCredentialsCard
@@ -107,10 +122,11 @@ export function ApplicationDetailPage() {
           onOpenRules={() => navigate('/rules')}
         />
         <ApplicationUsageCard
-          application={app}
-          isMock={apiMode === 'mock'}
-          hasUsage={hasUsage}
-          passRate={passRate}
+          applicationId={app.id}
+          usage={usage.data}
+          loading={usage.isPending}
+          error={usage.isError}
+          onRetry={() => void usage.refetch()}
         />
       </section>
     </div>

@@ -30,6 +30,22 @@ export interface Application {
   activeKeyCount: number;
 }
 
+export interface ApplicationUsage {
+  applicationId: string;
+  apiKeyId: string | null;
+  dataFrom: string;
+  dataThrough: string;
+  requestCount: number;
+  itemCount: number;
+  passCount: number;
+  rejectCount: number;
+  reviewCount: number;
+  aiCallCount: number;
+  aiInputTokens: number | null;
+  aiOutputTokens: number | null;
+  aiFailureCount: number;
+}
+
 export interface ApiKey {
   id: string;
   applicationId: string;

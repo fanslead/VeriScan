@@ -4,6 +4,7 @@ export {
   type ApplicationListResponseDto,
   type ApplicationResponseDto,
 } from './applicationAdapter';
+export { mapApplicationUsageResponse } from './applicationUsageAdapter';
 export {
   mapApiKeyListResponse,
   mapApiKeySummaryResponse,

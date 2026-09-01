@@ -255,3 +255,62 @@
   color: var(--muted);
   font-size: 10px;
 }
+.usage-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  margin-top: 20px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--line);
+}
+.usage-facts > div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 5px;
+  padding: 11px 12px;
+  background: var(--paper);
+}
+.usage-facts span {
+  color: var(--muted);
+  font-size: 9px;
+}
+.usage-facts strong {
+  overflow: hidden;
+  color: var(--graphite);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.usage-facts .usage-fact--danger {
+  color: var(--red);
+}
+.usage-error {
+  display: flex;
+  min-height: 150px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 18px;
+  border: 1px solid #f3d0ca;
+  border-radius: 10px;
+  background: var(--red-soft);
+}
+.usage-error > div {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.usage-error strong {
+  color: var(--red);
+  font-size: 12px;
+}
+.usage-error span {
+  color: var(--slate);
+  font-size: 10px;
+  line-height: 1.6;
+}

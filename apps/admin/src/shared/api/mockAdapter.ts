@@ -13,6 +13,7 @@ import type {
   ApiErrorShape,
   ApiKey,
   Application,
+  ApplicationUsage,
   CreateApplicationInput,
   CreateKeyInput,
   ListApplicationsParams,
@@ -111,6 +112,32 @@ export class MockApiClient implements ApiClient {
     if (applicationMatch) {
       const application = findApplication(applicationMatch[1]);
       return application ? (result(application) as T) : notFound('应用不存在');
+    }
+
+    const usageMatch = pathname.match(/^\/applications\/([^/]+)\/usage$/);
+    if (usageMatch) {
+      const application = findApplication(usageMatch[1]);
+      if (!application) return notFound('应用不存在');
+      const itemCount = application.totalRequests ?? 0;
+      const rejectCount = Math.round(itemCount * ((application.rejectRate ?? 0) / 100));
+      const reviewCount = Math.round(itemCount * ((application.reviewRate ?? 0) / 100));
+      const now = new Date();
+      const usage: ApplicationUsage = {
+        applicationId: application.id,
+        apiKeyId: null,
+        dataFrom: new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString(),
+        dataThrough: now.toISOString(),
+        requestCount: itemCount,
+        itemCount,
+        passCount: Math.max(0, itemCount - rejectCount - reviewCount),
+        rejectCount,
+        reviewCount,
+        aiCallCount: reviewCount,
+        aiInputTokens: reviewCount * 96,
+        aiOutputTokens: reviewCount * 24,
+        aiFailureCount: Math.round(reviewCount * 0.002),
+      };
+      return result(usage) as T;
     }
 
     const keyMatch = pathname.match(/^\/applications\/([^/]+)\/(?:api-keys|keys)$/);

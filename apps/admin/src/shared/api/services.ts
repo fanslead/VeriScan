@@ -7,6 +7,7 @@ import {
   mapApiKeyListResponse,
   mapApplicationListResponse,
   mapApplicationResponse,
+  mapApplicationUsageResponse,
   mapCreatedApiKeyResponse,
   mapModerationRecordListResponse,
   mapModerationRecordResponse,
@@ -20,6 +21,7 @@ import type {
   AiConfigurationTestResult,
   ApiKey,
   Application,
+  ApplicationUsage,
   CreateApplicationInput,
   CreateKeyInput,
   ListApplicationsParams,
@@ -97,6 +99,11 @@ export function createModerationService(client: ApiClient, mode: ApiMode = apiMo
 
     getApplication: async (applicationId: string): Promise<Application> =>
       mapApplicationResponse(await client.get<unknown>(`/applications/${applicationId}`)),
+
+    getApplicationUsage: async (applicationId: string): Promise<ApplicationUsage> =>
+      mapApplicationUsageResponse(
+        await client.get<unknown>(`/applications/${applicationId}/usage`),
+      ),
 
     setApplicationStatus: async (
       applicationId: string,
