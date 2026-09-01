@@ -68,6 +68,9 @@ services:
       KC_METRICS_ENABLED: "true"
       KC_HTTP_ENABLED: "true"
       KC_HOSTNAME_STRICT: "false"
+      KC_HOSTNAME: http://localhost:${KEYCLOAK_PORT:-8080}
+      # 浏览器继续使用宿主机地址，API 容器则从内部发现地址取得 JWKS 等后端端点。
+      KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
     ports:
       - "127.0.0.1:${KEYCLOAK_PORT:-8080}:8080"
     volumes:
@@ -87,11 +90,82 @@ services:
     networks:
       - backend
 
+  veriscan-migrate:
+    build:
+      context: ..
+      dockerfile: apps/api/Dockerfile
+    image: veriscan-api:${VERISCAN_IMAGE_TAG:-local}
+    restart: "no"
+    command: ["--migrate"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment: &api-environment
+      ASPNETCORE_ENVIRONMENT: Development
+      ConnectionStrings__VeriScan: Host=postgres;Port=5432;Database=${POSTGRES_DB:-veriscan};Username=${POSTGRES_USER:-veriscan};Password=${POSTGRES_PASSWORD}
+      ConnectionStrings__Redis: redis:6379,password=${REDIS_PASSWORD},abortConnect=false
+      Security__ApiKey__Pepper: ${API_KEY_PEPPER:?请在 infra/.env 中设置 API_KEY_PEPPER}
+      Security__AiCredentials__MasterKey: ${AI_CREDENTIAL_MASTER_KEY:?请在 infra/.env 中设置 AI_CREDENTIAL_MASTER_KEY}
+      Security__ModerationDigests__ContentPepper: ${CONTENT_DIGEST_PEPPER:?请在 infra/.env 中设置 CONTENT_DIGEST_PEPPER}
+      Security__ModerationDigests__IdempotencyPepper: ${IDEMPOTENCY_DIGEST_PEPPER:?请在 infra/.env 中设置 IDEMPOTENCY_DIGEST_PEPPER}
+      Security__ContentProtection__KeyRingPath: /var/lib/veriscan/keys
+      Authentication__Admin__Authority: http://localhost:${KEYCLOAK_PORT:-8080}/realms/${KEYCLOAK_REALM:-veriscan-local}
+      Authentication__Admin__MetadataAddress: http://keycloak:8080/realms/${KEYCLOAK_REALM:-veriscan-local}/.well-known/openid-configuration
+      Authentication__Admin__RequireHttpsMetadata: "false"
+      ExternalAi__AllowedHosts__0: ${EXTERNAL_AI_ALLOWED_HOST_0:-api.openai.com}
+      ExternalAi__AllowedHosts__1: ${EXTERNAL_AI_ALLOWED_HOST_1:-api.anthropic.com}
+    volumes:
+      - content_protection_keys:/var/lib/veriscan/keys
+    networks:
+      - backend
+
+  veriscan-api:
+    build:
+      context: ..
+      dockerfile: apps/api/Dockerfile
+    image: veriscan-api:${VERISCAN_IMAGE_TAG:-local}
+    restart: unless-stopped
+    depends_on:
+      veriscan-migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+    environment: *api-environment
+    ports:
+      - "127.0.0.1:${API_PORT:-5000}:8080"
+    volumes:
+      - content_protection_keys:/var/lib/veriscan/keys
+    networks:
+      - backend
+
+  veriscan-admin:
+    build:
+      context: ..
+      dockerfile: apps/admin/Dockerfile
+      args:
+        VITE_API_BASE_URL: /api/admin/v1
+        VITE_OIDC_AUTHORITY: http://localhost:${KEYCLOAK_PORT:-8080}/realms/${KEYCLOAK_REALM:-veriscan-local}
+        VITE_OIDC_CLIENT_ID: veriscan-admin
+        VITE_OIDC_REDIRECT_URI: http://localhost:${ADMIN_PORT:-5173}/auth/callback
+    image: veriscan-admin:${VERISCAN_IMAGE_TAG:-local}
+    restart: unless-stopped
+    depends_on:
+      veriscan-api:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${ADMIN_PORT:-5173}:8080"
+    networks:
+      - backend
+
 volumes:
   postgres_data:
     name: ${COMPOSE_PROJECT_NAME:-veriscan}_postgres_data
   redis_data:
     name: ${COMPOSE_PROJECT_NAME:-veriscan}_redis_data
+  content_protection_keys:
+    name: ${COMPOSE_PROJECT_NAME:-veriscan}_content_protection_keys
 
 networks:
   backend:

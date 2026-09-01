@@ -22,6 +22,7 @@ public sealed class ApiExceptionHandler(ILogger<ApiExceptionHandler> logger) : I
             ResourceNotFoundException => StatusCodes.Status404NotFound,
             RequestConflictException => StatusCodes.Status409Conflict,
             UnsupportedOperationException => StatusCodes.Status422UnprocessableEntity,
+            RequestTimeoutException => StatusCodes.Status504GatewayTimeout,
             RequestValidationException => StatusCodes.Status400BadRequest,
             _ => StatusCodes.Status400BadRequest
         };
@@ -37,6 +38,7 @@ public sealed class ApiExceptionHandler(ILogger<ApiExceptionHandler> logger) : I
                 StatusCodes.Status404NotFound => "Resource not found",
                 StatusCodes.Status409Conflict => "Conflict",
                 StatusCodes.Status422UnprocessableEntity => "Unsupported operation",
+                StatusCodes.Status504GatewayTimeout => "Request timeout",
                 _ => "Request validation failed"
             },
             Status = statusCode,

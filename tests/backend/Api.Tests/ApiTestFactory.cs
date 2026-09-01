@@ -40,6 +40,10 @@ public sealed class ApiTestFactory : WebApplicationFactory<Program>
                 ["Security:ApiKey:Pepper"] = "test-only-pepper-with-at-least-32-bytes-0001",
                 ["Security:ApiKey:PepperVersion"] = "test-v1",
                 ["Security:AiCredentials:MasterKey"] = "dmVyaXNjYW4tdGVzdC1tYXN0ZXIta2V5LTMyLWJ5dGU=",
+                ["Security:ModerationDigests:ContentPepper"] = "test-content-pepper-with-at-least-32-bytes-0001",
+                ["Security:ModerationDigests:IdempotencyPepper"] = "test-idempotency-pepper-with-at-least-32-bytes-0002",
+                ["Security:ModerationDigests:KeyVersion"] = "test-v1",
+                ["Outbox:Worker:Enabled"] = "false",
                 ["Database:AutoMigrate"] = "false"
             });
         });
@@ -63,12 +67,18 @@ public sealed class ApiTestFactory : WebApplicationFactory<Program>
                     _ => { });
             services.Configure<Microsoft.AspNetCore.Authorization.AuthorizationOptions>(options =>
             {
-                options.AddPolicy(
-                    AdminJwtOptions.Policy,
-                    new Microsoft.AspNetCore.Authorization.AuthorizationPolicyBuilder("TestAdmin")
-                        .RequireAuthenticatedUser()
-                        .AddRequirements(new AdminRoleRequirement())
-                        .Build());
+                var testAdminPolicy = new Microsoft.AspNetCore.Authorization.AuthorizationPolicyBuilder(
+                        "TestAdmin")
+                    .RequireAuthenticatedUser()
+                    .Build();
+                options.AddPolicy(AdminJwtOptions.Policy, testAdminPolicy);
+                options.AddPolicy(AdminPolicies.Viewer, testAdminPolicy);
+                options.AddPolicy(AdminPolicies.Operator, testAdminPolicy);
+                options.AddPolicy(AdminPolicies.RuleEditor, testAdminPolicy);
+                options.AddPolicy(AdminPolicies.AiConfigEditor, testAdminPolicy);
+                options.AddPolicy(AdminPolicies.Publisher, testAdminPolicy);
+                options.AddPolicy(AdminPolicies.Auditor, testAdminPolicy);
+                options.AddPolicy(AdminPolicies.PlatformAdmin, testAdminPolicy);
             });
             additionalServices?.Invoke(services);
         });
@@ -92,7 +102,7 @@ public sealed class ApiTestFactory : WebApplicationFactory<Program>
                 new WordRule(ruleSet.Id, "加微信", WordRuleType.Suspicious, "contact", 0.6m),
                 new WordRule(ruleSet.Id, "明鉴", WordRuleType.White, "product", 0.1m)
             ]);
-        var seedChecksum = RuleSetPolicyValidator.ComputeChecksum(ruleSet.Name, ruleSet.Rules);
+        var seedChecksum = RuleSetPolicyValidator.ComputeChecksum(ruleSet);
         ruleSet.RecordSuccessfulValidation(seedChecksum, DateTimeOffset.UtcNow);
         ruleSet.Publish(seedChecksum, DateTimeOffset.UtcNow);
         dbContext.RuleSetVersions.Add(ruleSet);

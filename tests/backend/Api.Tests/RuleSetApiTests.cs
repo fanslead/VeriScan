@@ -12,6 +12,8 @@ public sealed class RuleSetApiTests : IClassFixture<ApiTestFactory>
 {
     private static readonly string[] ModerationScopes = ["moderation:submit", "moderation:read"];
 
+    private static readonly string[] AdvancedCombinationTerms = ["优惠", "加微信"];
+
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
         Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) }
@@ -151,6 +153,61 @@ public sealed class RuleSetApiTests : IClassFixture<ApiTestFactory>
         var validation = await response.Content.ReadFromJsonAsync<RuleSetValidationResponse>(JsonOptions);
         Assert.False(validation!.Valid);
         Assert.Contains(validation.Issues, issue => issue.Code == "CONFLICTING_RULE");
+    }
+
+    [Fact]
+    public async Task AdvancedRegexAndCombinationRulesRoundTripThroughRuleSetApi()
+    {
+        using var client = factory.CreateClient();
+        using var create = AdminRequest(HttpMethod.Post, "/api/admin/v1/rule-sets");
+        create.Content = JsonContent.Create(new
+        {
+            name = "高级规则",
+            normalizationProfile = "traditionalSimplified",
+            rules = Array.Empty<object>(),
+            regexRules = new[]
+            {
+                new
+                {
+                    pattern = @"1(?:3|4)\d{9}",
+                    action = "forceReview",
+                    category = "contact",
+                    weight = 0.8m,
+                    timeoutMs = 100,
+                    maxInputLength = 65_536,
+                    engineMode = "nonBacktracking"
+                }
+            },
+            combinationRules = new[]
+            {
+                new
+                {
+                    name = "导流组合",
+                    terms = AdvancedCombinationTerms,
+                    action = "riskSignal",
+                    category = "contact",
+                    weight = 0.6m,
+                    windowSize = 32
+                }
+            }
+        });
+        var createResponse = await client.SendAsync(create);
+        var body = await createResponse.Content.ReadAsStringAsync();
+        Assert.True(createResponse.IsSuccessStatusCode, body);
+        var draft = JsonSerializer.Deserialize<RuleSetResponse>(body, JsonOptions)!;
+        Assert.Equal(RuleNormalizationProfile.TraditionalSimplified, draft.NormalizationProfile);
+        Assert.Single(draft.RegexRules!);
+        Assert.Single(draft.CombinationRules!);
+
+        await ValidateAndPublishAsync(client, draft.Id);
+        using var get = AdminRequest(HttpMethod.Get, $"/api/admin/v1/rule-sets/{draft.Id}");
+        var getResponse = await client.SendAsync(get);
+        getResponse.EnsureSuccessStatusCode();
+        var published = await getResponse.Content.ReadFromJsonAsync<RuleSetResponse>(JsonOptions);
+        Assert.Equal(RuleSetStatus.Published, published!.Status);
+        Assert.Equal(2, published.RuleCount);
+        Assert.Single(published.RegexRules!);
+        Assert.Single(published.CombinationRules!);
     }
 
     private static async Task<RuleSetResponse> CreateRuleSetAsync(

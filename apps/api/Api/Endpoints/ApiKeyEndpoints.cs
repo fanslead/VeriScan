@@ -10,7 +10,7 @@ public static class ApiKeyEndpoints
     {
         var group = endpoints.MapGroup("/api/admin/v1/applications/{applicationId:guid}/api-keys")
             .WithTags("Application API Keys")
-            .RequireAuthorization(AdminJwtOptions.Policy);
+            .RequireAuthorization(AdminJwtOptions.Policy, AdminPolicies.Viewer);
 
         group.MapPost("", async (
                 Guid applicationId,
@@ -23,6 +23,7 @@ public static class ApiKeyEndpoints
                     $"/api/admin/v1/applications/{applicationId}/api-keys/{response.KeyId}",
                     response);
             })
+            .RequireAuthorization(AdminPolicies.Operator)
             .WithName("CreateApplicationApiKey")
             .WithSummary("创建应用 API Key")
             .WithDescription("创建成功时返回一次完整明文 Key，之后只能查看脱敏摘要。")
@@ -57,6 +58,7 @@ public static class ApiKeyEndpoints
                     $"/api/admin/v1/applications/{applicationId}/api-keys/{response.KeyId}",
                     response);
             })
+            .RequireAuthorization(AdminPolicies.Operator)
             .WithName("RotateApplicationApiKey")
             .WithSummary("轮换应用 API Key")
             .WithDescription("先创建新 Key；可按请求选择是否立即撤销旧 Key。")
@@ -74,6 +76,7 @@ public static class ApiKeyEndpoints
                 await service.RevokeAsync(applicationId, keyId, cancellationToken);
                 return TypedResults.NoContent();
             })
+            .RequireAuthorization(AdminPolicies.Operator)
             .WithName("RevokeApplicationApiKey")
             .WithSummary("撤销应用 API Key")
             .WithDescription("撤销后该 Key 不能再通过业务审核 API 认证。")

@@ -10,7 +10,7 @@ public static class AdminReadEndpoints
     {
         var group = endpoints.MapGroup("/api/admin/v1")
             .WithTags("Admin Read Models")
-            .RequireAuthorization(AdminJwtOptions.Policy);
+            .RequireAuthorization(AdminJwtOptions.Policy, AdminPolicies.Viewer);
 
         group.MapGet("/overview", async (
                 IAdminReadService service,

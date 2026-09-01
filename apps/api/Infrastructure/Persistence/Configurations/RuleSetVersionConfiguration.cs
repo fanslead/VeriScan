@@ -12,6 +12,7 @@ public sealed class RuleSetVersionConfiguration : IEntityTypeConfiguration<RuleS
         builder.HasKey(ruleSet => ruleSet.Id);
         builder.Property(ruleSet => ruleSet.PublicRevisionId).HasMaxLength(80).IsRequired();
         builder.Property(ruleSet => ruleSet.Name).HasMaxLength(100).IsRequired();
+        builder.Property(ruleSet => ruleSet.NormalizationProfile).HasConversion<string>().HasMaxLength(48).IsRequired();
         builder.Property(ruleSet => ruleSet.Status).HasConversion<string>().HasMaxLength(32).IsRequired();
         builder.Property(ruleSet => ruleSet.UpdatedAt).IsConcurrencyToken();
         builder.Property(ruleSet => ruleSet.LastValidatedChecksum).HasMaxLength(64);
@@ -19,6 +20,14 @@ public sealed class RuleSetVersionConfiguration : IEntityTypeConfiguration<RuleS
         builder.HasIndex(ruleSet => ruleSet.PublicRevisionId).IsUnique();
         builder.HasIndex(ruleSet => new { ruleSet.Status, ruleSet.UpdatedAt });
         builder.HasMany(ruleSet => ruleSet.Rules)
+            .WithOne(rule => rule.RuleSetVersion)
+            .HasForeignKey(rule => rule.RuleSetVersionId)
+            .OnDelete(DeleteBehavior.Cascade);
+        builder.HasMany(ruleSet => ruleSet.RegexRules)
+            .WithOne(rule => rule.RuleSetVersion)
+            .HasForeignKey(rule => rule.RuleSetVersionId)
+            .OnDelete(DeleteBehavior.Cascade);
+        builder.HasMany(ruleSet => ruleSet.CombinationRules)
             .WithOne(rule => rule.RuleSetVersion)
             .HasForeignKey(rule => rule.RuleSetVersionId)
             .OnDelete(DeleteBehavior.Cascade);

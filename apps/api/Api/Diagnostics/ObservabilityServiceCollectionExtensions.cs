@@ -3,6 +3,7 @@ using OpenTelemetry.Logs;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
+using VeriScan.Infrastructure.ExternalAi;
 
 namespace VeriScan.Api.Diagnostics;
 
@@ -34,7 +35,8 @@ public static class ObservabilityServiceCollectionExtensions
                 }))
             .WithMetrics(metrics => metrics
                 .AddHttpClientInstrumentation()
-                .AddMeter(RequestMetrics.MeterName))
+                .AddMeter(RequestMetrics.MeterName)
+                .AddMeter(ExternalAiMetrics.MeterName))
             .WithLogging(
                 configureBuilder: _ => { },
                 configureOptions: logging =>

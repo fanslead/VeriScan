@@ -68,20 +68,21 @@ internal static class ModerationMappings
             request.Id,
             request.ApplicationId,
             request.PolicyRevision,
-            ToCamelCase(request.ProcessingStatus.ToString()),
+            ToWireStatus(request.ProcessingStatus),
             request.SubmittedAt,
             request.MachineCompletedAt,
             request.FinalizedAt,
-            request.Items.Select(ToResponse).ToArray());
+            request.Items.OrderBy(item => item.Ordinal).Select(ToResponse).ToArray());
     }
 
     private static ModerationItemResponse ToResponse(ModerationItem item)
     {
         var reasonCodes = DeserializeList(item.ReasonCodesText);
         var categories = DeserializeCategories(item.CategoriesText);
+        var evidence = DeserializeEvidence(item.EvidenceText);
         return new ModerationItemResponse(
             item.ClientItemId,
-            ToCamelCase(item.ProcessingStatus.ToString()),
+            ToWireStatus(item.ProcessingStatus),
             item.Decision,
             item.Decision == ModerationDecision.Review,
             item.ReviewSource,
@@ -93,7 +94,8 @@ internal static class ModerationMappings
             item.Route,
             item.ErrorCode,
             item.MachineCompletedAt,
-            item.FinalizedAt);
+            item.FinalizedAt,
+            evidence);
     }
 
     private static string[] DeserializeList(string value)
@@ -114,10 +116,67 @@ internal static class ModerationMappings
         return categories.Select(category => new ModerationCategoryResponse(category.Code, category.RiskScore)).ToArray();
     }
 
-    private static string ToCamelCase(string value)
+    private static ModerationEvidenceResponse[] DeserializeEvidence(string value)
     {
-        return value.Length == 0
-            ? value
-            : char.ToLowerInvariant(value[0]) + value[1..];
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return [];
+        }
+
+        try
+        {
+            var evidence = JsonSerializer.Deserialize<RuleEvidence[]>(value) ?? [];
+            return evidence
+                .Select(item => new ModerationEvidenceResponse(
+                    item.RuleId,
+                    item.RuleKind,
+                    item.Category,
+                    item.Action,
+                    item.Quote,
+                item.OriginalStart,
+                item.OriginalLength,
+                item.NormalizedStart,
+                item.NormalizedLength,
+                item.EvidenceTemplate))
+                .ToArray();
+        }
+        catch (JsonException)
+        {
+            try
+            {
+                var legacyEvidence = JsonSerializer.Deserialize<string[]>(value) ?? [];
+                return legacyEvidence
+                    .Select(quote => new ModerationEvidenceResponse(
+                        string.Empty,
+                        "ai",
+                        string.Empty,
+                        RuleAction.MonitorOnly,
+                        quote,
+                        -1,
+                        -1,
+                        -1,
+                        -1))
+                    .ToArray();
+            }
+            catch (JsonException)
+            {
+                return [];
+            }
+        }
+    }
+
+    private static string ToWireStatus(ModerationProcessingStatus status)
+    {
+        return status switch
+        {
+            ModerationProcessingStatus.Accepted => "accepted",
+            ModerationProcessingStatus.Processing => "processing",
+            ModerationProcessingStatus.RetryWait => "retry_wait",
+            ModerationProcessingStatus.Completed => "completed",
+            ModerationProcessingStatus.CompletedWithErrors => "completed_with_errors",
+            ModerationProcessingStatus.Failed => "failed",
+            ModerationProcessingStatus.Cancelled => "cancelled",
+            _ => throw new ArgumentOutOfRangeException(nameof(status), status, null)
+        };
     }
 }

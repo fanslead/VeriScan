@@ -15,6 +15,8 @@ public sealed class RuleSetStore(VeriScanDbContext dbContext) : IRuleSetStore
     {
         return dbContext.RuleSetVersions
             .Include(ruleSet => ruleSet.Rules)
+            .Include(ruleSet => ruleSet.RegexRules)
+            .Include(ruleSet => ruleSet.CombinationRules)
             .Include(ruleSet => ruleSet.Applications)
             .SingleOrDefaultAsync(ruleSet => ruleSet.Id == id, cancellationToken);
     }
@@ -25,6 +27,8 @@ public sealed class RuleSetStore(VeriScanDbContext dbContext) : IRuleSetStore
     {
         return dbContext.RuleSetVersions
             .Include(ruleSet => ruleSet.Rules)
+            .Include(ruleSet => ruleSet.RegexRules)
+            .Include(ruleSet => ruleSet.CombinationRules)
             .Include(ruleSet => ruleSet.Applications)
             .SingleOrDefaultAsync(
                 ruleSet => ruleSet.PublicRevisionId == publicRevisionId,
@@ -48,6 +52,8 @@ public sealed class RuleSetStore(VeriScanDbContext dbContext) : IRuleSetStore
         return dbContext.RuleSetVersions
             .AsNoTracking()
             .Include(ruleSet => ruleSet.Rules)
+            .Include(ruleSet => ruleSet.RegexRules)
+            .Include(ruleSet => ruleSet.CombinationRules)
             .SingleOrDefaultAsync(
                 ruleSet => ruleSet.Applications.Any(application => application.Id == applicationId),
                 cancellationToken);
@@ -58,6 +64,8 @@ public sealed class RuleSetStore(VeriScanDbContext dbContext) : IRuleSetStore
         return await dbContext.RuleSetVersions
             .AsNoTracking()
             .Include(ruleSet => ruleSet.Rules)
+            .Include(ruleSet => ruleSet.RegexRules)
+            .Include(ruleSet => ruleSet.CombinationRules)
             .Include(ruleSet => ruleSet.Applications)
             .OrderBy(ruleSet => ruleSet.Status == RuleSetStatus.Published ? 0 : 1)
             .ThenByDescending(ruleSet => ruleSet.UpdatedAt)
@@ -75,18 +83,35 @@ public sealed class RuleSetStore(VeriScanDbContext dbContext) : IRuleSetStore
         RuleSetVersion ruleSet,
         string name,
         IReadOnlyCollection<WordRule> rules,
+        IReadOnlyCollection<RegexRule> regexRules,
+        IReadOnlyCollection<CombinationRule> combinationRules,
+        RuleNormalizationProfile normalizationProfile,
         CancellationToken cancellationToken)
     {
         try
         {
             if (!dbContext.Database.IsRelational())
             {
-                await ReplaceDraftCoreAsync(ruleSet, name, rules, cancellationToken);
+                await ReplaceDraftCoreAsync(
+                    ruleSet,
+                    name,
+                    rules,
+                    regexRules,
+                    combinationRules,
+                    normalizationProfile,
+                    cancellationToken);
                 return;
             }
 
             await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
-            await ReplaceDraftCoreAsync(ruleSet, name, rules, cancellationToken);
+            await ReplaceDraftCoreAsync(
+                ruleSet,
+                name,
+                rules,
+                regexRules,
+                combinationRules,
+                normalizationProfile,
+                cancellationToken);
             await transaction.CommitAsync(cancellationToken);
         }
         catch (DbUpdateConcurrencyException)
@@ -111,14 +136,23 @@ public sealed class RuleSetStore(VeriScanDbContext dbContext) : IRuleSetStore
         RuleSetVersion ruleSet,
         string name,
         IReadOnlyCollection<WordRule> rules,
+        IReadOnlyCollection<RegexRule> regexRules,
+        IReadOnlyCollection<CombinationRule> combinationRules,
+        RuleNormalizationProfile normalizationProfile,
         CancellationToken cancellationToken)
     {
         var previousRules = ruleSet.Rules.ToArray();
-        ruleSet.ReplaceDraft(name, []);
+        var previousRegexRules = ruleSet.RegexRules.ToArray();
+        var previousCombinationRules = ruleSet.CombinationRules.ToArray();
+        ruleSet.ReplaceDraft(name, [], [], [], normalizationProfile);
         dbContext.WordRules.RemoveRange(previousRules);
+        dbContext.RegexRules.RemoveRange(previousRegexRules);
+        dbContext.CombinationRules.RemoveRange(previousCombinationRules);
         await dbContext.SaveChangesAsync(cancellationToken);
-        ruleSet.ReplaceDraft(name, rules);
+        ruleSet.ReplaceDraft(name, rules, regexRules, combinationRules, normalizationProfile);
         dbContext.WordRules.AddRange(rules);
+        dbContext.RegexRules.AddRange(regexRules);
+        dbContext.CombinationRules.AddRange(combinationRules);
         await dbContext.SaveChangesAsync(cancellationToken);
     }
 }

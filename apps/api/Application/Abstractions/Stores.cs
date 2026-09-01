@@ -44,7 +44,10 @@ public sealed record ApiKeyVerificationData(
 
 public interface IModerationStore
 {
-    Task<bool> TryReserveAsync(ModerationRequest request, CancellationToken cancellationToken);
+    Task<bool> TryReserveAsync(
+        ModerationRequest request,
+        ModerationJob? job,
+        CancellationToken cancellationToken);
 
     Task<ModerationRequest?> GetByIdAsync(Guid applicationId, Guid requestId, CancellationToken cancellationToken);
 
@@ -53,7 +56,27 @@ public interface IModerationStore
         string idempotencyKeyDigest,
         CancellationToken cancellationToken);
 
+    Task<ModerationRequest?> GetForProcessingAsync(
+        Guid requestId,
+        CancellationToken cancellationToken);
+
     Task AddItemAsync(ModerationItem item, CancellationToken cancellationToken);
+
+    Task SaveChangesAsync(CancellationToken cancellationToken);
+}
+
+public interface IModerationJobStore
+{
+    Task<ModerationJob?> ClaimNextAsync(
+        string workerId,
+        DateTimeOffset now,
+        TimeSpan leaseDuration,
+        CancellationToken cancellationToken);
+
+    Task<ModerationJob?> GetByRequestIdAsync(
+        Guid applicationId,
+        Guid requestId,
+        CancellationToken cancellationToken);
 
     Task SaveChangesAsync(CancellationToken cancellationToken);
 }
@@ -82,6 +105,9 @@ public interface IRuleSetStore
         RuleSetVersion ruleSet,
         string name,
         IReadOnlyCollection<WordRule> rules,
+        IReadOnlyCollection<RegexRule> regexRules,
+        IReadOnlyCollection<CombinationRule> combinationRules,
+        RuleNormalizationProfile normalizationProfile,
         CancellationToken cancellationToken);
 
     Task SaveChangesAsync(CancellationToken cancellationToken);

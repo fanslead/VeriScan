@@ -37,19 +37,22 @@ public sealed partial class AiConfigurationService : IAiConfigurationService
     private readonly IAiSchemaDescriptor schemaDescriptor;
     private readonly IAiModelConfigurationStore store;
     private readonly IAiCredentialProtector credentialProtector;
+    private readonly IOperationalFactService operationalFactService;
 
     public AiConfigurationService(
         IAiModelConfigurationStore store,
         IAiEndpointPolicy endpointPolicy,
         IAiConfigurationProbe probe,
         IAiSchemaDescriptor schemaDescriptor,
-        IAiCredentialProtector credentialProtector)
+        IAiCredentialProtector credentialProtector,
+        IOperationalFactService operationalFactService)
     {
         this.store = store;
         this.endpointPolicy = endpointPolicy;
         this.probe = probe;
         this.schemaDescriptor = schemaDescriptor;
         this.credentialProtector = credentialProtector;
+        this.operationalFactService = operationalFactService;
     }
 
     public async Task<AiConfigurationResponse> CreateAsync(
@@ -60,6 +63,7 @@ public sealed partial class AiConfigurationService : IAiConfigurationService
         var configuration = CreateEntity(draft);
         ApplyCredential(configuration, draft);
         await store.AddAsync(configuration, cancellationToken);
+        await RecordChangeAsync(configuration, "ai_configuration.created", null, cancellationToken);
         await store.SaveChangesAsync(cancellationToken);
         return AiConfigurationMappings.ToResponse(configuration);
     }
@@ -96,6 +100,7 @@ public sealed partial class AiConfigurationService : IAiConfigurationService
             source.RetentionClass);
         configuration.CopyCredentialFrom(source);
         await store.AddAsync(configuration, cancellationToken);
+        await RecordChangeAsync(configuration, "ai_configuration.revision_created", null, cancellationToken);
         await store.SaveChangesAsync(cancellationToken);
         return AiConfigurationMappings.ToResponse(configuration);
     }
@@ -116,9 +121,11 @@ public sealed partial class AiConfigurationService : IAiConfigurationService
             throw new RequestConflictException("已发布或已归档的 AI 配置不可原地修改，请创建新草稿。");
         }
 
+        var beforeJson = OperationalFactPayloads.AiConfiguration(configuration, "before_update");
         var draft = Validate(request, configuration);
         ApplyDraft(configuration, draft);
         ApplyCredential(configuration, draft);
+        await RecordChangeAsync(configuration, "ai_configuration.updated", beforeJson, cancellationToken);
         await store.SaveChangesAsync(cancellationToken);
         return AiConfigurationMappings.ToResponse(configuration);
     }
@@ -139,6 +146,7 @@ public sealed partial class AiConfigurationService : IAiConfigurationService
             throw new RequestConflictException("发布前必须对当前草稿执行一次成功的合成连接测试。");
         }
 
+        var beforeJson = OperationalFactPayloads.AiConfiguration(configuration, "before_publish");
         ValidateEndpoint(configuration);
         var schema = schemaDescriptor.Describe(configuration.Protocol);
         configuration.Publish(
@@ -148,6 +156,7 @@ public sealed partial class AiConfigurationService : IAiConfigurationService
             schema.EffectiveSchemaHash,
             schema.SchemaTransformerVersion,
             DateTimeOffset.UtcNow);
+        await RecordChangeAsync(configuration, "ai_configuration.published", beforeJson, cancellationToken);
         await store.SaveChangesAsync(cancellationToken);
         return AiConfigurationMappings.ToResponse(configuration);
     }
@@ -160,6 +169,8 @@ public sealed partial class AiConfigurationService : IAiConfigurationService
             throw new RequestConflictException("只有已发布的 AI 配置可以激活。");
         }
 
+        var beforeJson = OperationalFactPayloads.AiConfiguration(configuration, "before_activate");
+        await RecordChangeAsync(configuration, "ai_configuration.activated", beforeJson, cancellationToken);
         await store.ActivateExclusiveAsync(configuration, DateTimeOffset.UtcNow, cancellationToken);
         return AiConfigurationMappings.ToResponse(configuration);
     }
@@ -167,7 +178,9 @@ public sealed partial class AiConfigurationService : IAiConfigurationService
     public async Task<AiConfigurationResponse> ArchiveAsync(Guid id, CancellationToken cancellationToken)
     {
         var configuration = await GetRequiredAsync(id, cancellationToken);
+        var beforeJson = OperationalFactPayloads.AiConfiguration(configuration, "before_archive");
         configuration.Archive(DateTimeOffset.UtcNow);
+        await RecordChangeAsync(configuration, "ai_configuration.archived", beforeJson, cancellationToken);
         await store.SaveChangesAsync(cancellationToken);
         return AiConfigurationMappings.ToResponse(configuration);
     }
@@ -182,7 +195,9 @@ public sealed partial class AiConfigurationService : IAiConfigurationService
 
         ValidateEndpoint(configuration);
         var result = await probe.ProbeAsync(configuration, cancellationToken);
+        var beforeJson = OperationalFactPayloads.AiConfiguration(configuration, "before_test");
         configuration.RecordTestResult(result.Succeeded, result.FailureCode, DateTimeOffset.UtcNow);
+        await RecordChangeAsync(configuration, "ai_configuration.tested", beforeJson, cancellationToken);
         await store.SaveChangesAsync(cancellationToken);
         return new AiConfigurationTestResponse(
             result.Succeeded,
@@ -198,5 +213,39 @@ public sealed partial class AiConfigurationService : IAiConfigurationService
     {
         return await store.GetByIdAsync(id, cancellationToken)
             ?? throw new ResourceNotFoundException("AI 模型配置不存在。");
+    }
+
+    private async Task RecordChangeAsync(
+        AiModelConfiguration configuration,
+        string action,
+        string? beforeJson,
+        CancellationToken cancellationToken)
+    {
+        var afterJson = OperationalFactPayloads.AiConfiguration(configuration, action);
+        await operationalFactService.RecordAuditAsync(
+            new AuditEntry(
+                null,
+                null,
+                null,
+                "admin",
+                null,
+                action,
+                "ai_configuration",
+                configuration.Id.ToString(),
+                beforeJson,
+                afterJson,
+                null,
+                configuration.UpdatedAt),
+            cancellationToken);
+        await operationalFactService.EnqueueAsync(
+            new OutboxMessage(
+                action,
+                "ai_configuration",
+                configuration.Id,
+                null,
+                null,
+                afterJson,
+                configuration.UpdatedAt),
+            cancellationToken);
     }
 }

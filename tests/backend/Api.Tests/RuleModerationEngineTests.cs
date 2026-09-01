@@ -70,4 +70,120 @@ public sealed class RuleModerationEngineTests
         Assert.Same(first, second);
         Assert.Equal(ModerationDecision.Reject, second.Evaluate("这是诈骗").Decision);
     }
+
+    [Fact]
+    public void NormalizerRemovesSeparatorsAndKeepsOriginalEvidenceRange()
+    {
+        var normalized = RuleTextNormalizer.Normalize("加\u200B  微信");
+
+        Assert.Equal("加微信", normalized.Value);
+        Assert.Equal(3, normalized.Spans.Count);
+        Assert.Equal(0, normalized.Spans[0].OriginalStart);
+        Assert.Equal(5, normalized.Spans[2].OriginalStart);
+    }
+
+    [Fact]
+    public void TraditionalSimplifiedProfileCanBeEnabledExplicitly()
+    {
+        var engine = new RuleModerationEngine();
+        var rules = new WordRule[]
+        {
+            new(Guid.Empty, "国家", WordRuleType.Black, "policy", 1m)
+        };
+
+        var disabled = engine.Evaluate("國家", rules);
+        var enabled = engine.Evaluate(
+            "國家",
+            rules,
+            [],
+            [],
+            RuleNormalizationOptions.ForProfile(RuleNormalizationProfile.TraditionalSimplified));
+
+        Assert.NotEqual(ModerationDecision.Reject, disabled.Decision);
+        Assert.Equal(ModerationDecision.Reject, enabled.Decision);
+    }
+
+    [Fact]
+    public void RegexRuleUsesSafeEngineAndReturnsOriginalEvidence()
+    {
+        var engine = new RuleModerationEngine();
+        var regexRules = new RegexRule[]
+        {
+            new(Guid.Empty, @"1(?:3|4)\d{9}", RuleAction.ForceReview, "contact", 0.8m)
+        };
+
+        var result = engine.Evaluate("联系电话：13812345678", [], regexRules, []);
+
+        Assert.Equal(ModerationDecision.Review, result.Decision);
+        Assert.False(result.RequiresAi);
+        var evidence = Assert.Single(result.EvidenceDetails);
+        Assert.Equal("13812345678", evidence.Quote);
+        Assert.Equal(5, evidence.OriginalStart);
+        Assert.Equal("regex", evidence.RuleKind);
+    }
+
+    [Fact]
+    public void DangerousRegexCannotBePublished()
+    {
+        var rule = new RegexRule(
+            Guid.Empty,
+            "(a+)+$",
+            RuleAction.RiskSignal,
+            "risk",
+            0.5m,
+            engineMode: RegexRuleEngineMode.Backtracking);
+
+        var validation = RegexRuleSafetyValidator.Validate(rule);
+
+        Assert.False(validation.Valid);
+        Assert.Equal("REGEX_NESTED_QUANTIFIER", validation.Code);
+    }
+
+    [Fact]
+    public void CombinationRuleRequiresAllTermsInsideConfiguredWindow()
+    {
+        var engine = new RuleModerationEngine();
+        var combinationRules = new CombinationRule[]
+        {
+            new(
+                Guid.Empty,
+                "导流组合",
+                ["加微信", "优惠"],
+                RuleAction.ForceReview,
+                "contact",
+                0.8m,
+                windowSize: 12)
+        };
+
+        var matched = engine.Evaluate("优惠活动请加微信", [], [], combinationRules);
+        var outsideWindow = engine.Evaluate("优惠活动请提供更多信息后再联系我们加微信", [], [], combinationRules);
+
+        Assert.Equal(ModerationDecision.Review, matched.Decision);
+        Assert.False(matched.RequiresAi);
+        Assert.Empty(outsideWindow.EvidenceDetails);
+        Assert.True(outsideWindow.RequiresAi);
+    }
+
+    [Fact]
+    public void MonitorOnlyRuleDoesNotChangeTerminalDecision()
+    {
+        var engine = new RuleModerationEngine();
+        var rules = new WordRule[]
+        {
+            new(
+                Guid.Empty,
+                "实验词",
+                WordRuleType.Suspicious,
+                "experiment",
+                0.2m,
+                RuleAction.MonitorOnly)
+        };
+
+        var result = engine.Evaluate("实验词", rules);
+
+        Assert.Equal(ModerationDecision.Review, result.Decision);
+        Assert.True(result.RequiresAi);
+        Assert.Contains("RULE_MONITOR_ONLY", result.ReasonCodes);
+        Assert.Single(result.EvidenceDetails);
+    }
 }

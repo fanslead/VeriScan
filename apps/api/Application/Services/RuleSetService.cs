@@ -26,14 +26,22 @@ public interface IRuleSetService
     Task<RuleSetResponse> ArchiveAsync(Guid id, CancellationToken cancellationToken);
 }
 
-public sealed class RuleSetService(IRuleSetStore store) : IRuleSetService
+public sealed class RuleSetService(
+    IRuleSetStore store,
+    IOperationalFactService operationalFactService) : IRuleSetService
 {
     public async Task<RuleSetResponse> CreateAsync(
         CreateRuleSetRequest request,
         CancellationToken cancellationToken)
     {
-        var ruleSet = CreateDraft(request.Name, request.Rules);
+        var ruleSet = CreateDraft(
+            request.Name,
+            request.Rules,
+            request.RegexRules,
+            request.CombinationRules,
+            request.NormalizationProfile);
         await store.AddAsync(ruleSet, cancellationToken);
+        await RecordChangeAsync(ruleSet, "rule_set.created", null, cancellationToken);
         await store.SaveChangesAsync(cancellationToken);
         return ToResponse(ruleSet);
     }
@@ -56,11 +64,17 @@ public sealed class RuleSetService(IRuleSetStore store) : IRuleSetService
     {
         var ruleSet = await GetRequiredAsync(id, cancellationToken);
         EnsureDraft(ruleSet);
+        EnsureAtLeastOneRule(request.Rules.Count, request.RegexRules.Count, request.CombinationRules.Count);
+        var beforeJson = OperationalFactPayloads.RuleSet(ruleSet, "before_update");
+        await RecordChangeAsync(ruleSet, "rule_set.updated", beforeJson, cancellationToken);
         await ExecuteMutationAsync(
             () => store.ReplaceDraftAsync(
                 ruleSet,
                 NormalizeName(request.Name),
                 CreateRules(ruleSet.Id, request.Rules),
+                CreateRegexRules(ruleSet.Id, request.RegexRules),
+                CreateCombinationRules(ruleSet.Id, request.CombinationRules),
+                request.NormalizationProfile,
                 cancellationToken));
         return ToResponse(ruleSet);
     }
@@ -70,7 +84,7 @@ public sealed class RuleSetService(IRuleSetStore store) : IRuleSetService
         CancellationToken cancellationToken)
     {
         var source = await GetRequiredAsync(sourceId, cancellationToken);
-        var revision = new RuleSetVersion(source.Name);
+        var revision = new RuleSetVersion(source.Name, source.NormalizationProfile);
         revision.ReplaceDraft(
             source.Name,
             source.Rules
@@ -80,9 +94,54 @@ public sealed class RuleSetService(IRuleSetStore store) : IRuleSetService
                     rule.Term,
                     rule.Type,
                     rule.Category,
-                    rule.Weight))
-                .ToArray());
+                    rule.Weight,
+                    rule.Action,
+                    rule.MatchMode,
+                    rule.Language,
+                    rule.Scene,
+                    rule.EvidenceTemplate,
+                    rule.Priority,
+                    rule.Source,
+                    rule.IsEnabled))
+                .ToArray(),
+            source.RegexRules
+                .OrderBy(rule => rule.CreatedAt)
+                .Select(rule => new RegexRule(
+                    revision.Id,
+                    rule.Pattern,
+                    rule.Action,
+                    rule.Category,
+                    rule.Weight,
+                    rule.TimeoutMs,
+                    rule.MaxInputLength,
+                    rule.EngineMode,
+                    rule.Language,
+                    rule.Scene,
+                    rule.EvidenceTemplate,
+                    rule.Priority,
+                    rule.Source,
+                    rule.IsEnabled))
+                .ToArray(),
+            source.CombinationRules
+                .OrderBy(rule => rule.CreatedAt)
+                .Select(rule => new CombinationRule(
+                    revision.Id,
+                    rule.Name,
+                    rule.Terms,
+                    rule.Action,
+                    rule.Category,
+                    rule.Weight,
+                    rule.WindowSize,
+                    rule.Language,
+                    rule.Scene,
+                    rule.EvidenceTemplate,
+                    rule.Priority,
+                    rule.Source,
+                    rule.IsEnabled))
+                .ToArray(),
+            source.NormalizationProfile);
         await store.AddAsync(revision, cancellationToken);
+        await RecordChangeAsync(revision, "rule_set.revision_created", null, cancellationToken);
         await ExecuteMutationAsync(() => store.SaveChangesAsync(cancellationToken));
         return ToResponse(revision);
     }
@@ -103,6 +162,7 @@ public sealed class RuleSetService(IRuleSetStore store) : IRuleSetService
             ruleSet.ClearValidation();
         }
 
+        await RecordChangeAsync(ruleSet, "rule_set.validated", null, cancellationToken);
         await ExecuteMutationAsync(() => store.SaveChangesAsync(cancellationToken));
         return validation;
     }
@@ -126,7 +186,9 @@ public sealed class RuleSetService(IRuleSetStore store) : IRuleSetService
             throw new RequestConflictException("发布前必须对当前草稿执行一次成功校验。");
         }
 
+        var beforeJson = OperationalFactPayloads.RuleSet(ruleSet, "before_publish");
         ruleSet.Publish(validation.Checksum, DateTimeOffset.UtcNow);
+        await RecordChangeAsync(ruleSet, "rule_set.published", beforeJson, cancellationToken);
         await ExecuteMutationAsync(() => store.SaveChangesAsync(cancellationToken));
         return ToResponse(ruleSet);
     }
@@ -140,19 +202,28 @@ public sealed class RuleSetService(IRuleSetStore store) : IRuleSetService
             throw new RequestConflictException("仍有应用绑定该规则集，请先切换应用规则版本。");
         }
 
+        var beforeJson = OperationalFactPayloads.RuleSet(ruleSet, "before_archive");
         ruleSet.Archive(DateTimeOffset.UtcNow);
+        await RecordChangeAsync(ruleSet, "rule_set.archived", beforeJson, cancellationToken);
         await ExecuteMutationAsync(() => store.SaveChangesAsync(cancellationToken));
         return ToResponse(ruleSet);
     }
 
     private static RuleSetVersion CreateDraft(
         string name,
-        IReadOnlyList<WordRuleDraftRequest> ruleRequests)
+        IReadOnlyList<WordRuleDraftRequest> ruleRequests,
+        IReadOnlyList<RegexRuleDraftRequest> regexRuleRequests,
+        IReadOnlyList<CombinationRuleDraftRequest> combinationRuleRequests,
+        RuleNormalizationProfile normalizationProfile)
     {
-        var ruleSet = new RuleSetVersion(NormalizeName(name));
+        EnsureAtLeastOneRule(ruleRequests.Count, regexRuleRequests.Count, combinationRuleRequests.Count);
+        var ruleSet = new RuleSetVersion(NormalizeName(name), normalizationProfile);
         ruleSet.ReplaceDraft(
             ruleSet.Name,
-            CreateRules(ruleSet.Id, ruleRequests));
+            CreateRules(ruleSet.Id, ruleRequests),
+            CreateRegexRules(ruleSet.Id, regexRuleRequests),
+            CreateCombinationRules(ruleSet.Id, combinationRuleRequests),
+            normalizationProfile);
         return ruleSet;
     }
 
@@ -165,7 +236,64 @@ public sealed class RuleSetService(IRuleSetStore store) : IRuleSetService
             request.Term.Trim(),
             request.Type,
             request.Category.Trim().ToLowerInvariant(),
-            request.Weight)).ToArray();
+            request.Weight,
+            request.Action,
+            request.MatchMode,
+            request.Language?.Trim(),
+            request.Scene?.Trim(),
+            request.EvidenceTemplate?.Trim(),
+            request.Priority,
+            request.Source?.Trim())).ToArray();
+    }
+
+    private static void EnsureAtLeastOneRule(
+        int wordRuleCount,
+        int regexRuleCount,
+        int combinationRuleCount)
+    {
+        if (wordRuleCount + regexRuleCount + combinationRuleCount == 0)
+        {
+            throw new RequestValidationException("规则集至少需要一条规则。");
+        }
+    }
+
+    private static RegexRule[] CreateRegexRules(
+        Guid ruleSetVersionId,
+        IReadOnlyList<RegexRuleDraftRequest> requests)
+    {
+        return requests.Select(request => new RegexRule(
+            ruleSetVersionId,
+            request.Pattern,
+            request.Action,
+            request.Category.Trim().ToLowerInvariant(),
+            request.Weight,
+            request.TimeoutMs,
+            request.MaxInputLength,
+            request.EngineMode,
+            request.Language?.Trim(),
+            request.Scene?.Trim(),
+            request.EvidenceTemplate?.Trim(),
+            request.Priority,
+            request.Source?.Trim())).ToArray();
+    }
+
+    private static CombinationRule[] CreateCombinationRules(
+        Guid ruleSetVersionId,
+        IReadOnlyList<CombinationRuleDraftRequest> requests)
+    {
+        return requests.Select(request => new CombinationRule(
+            ruleSetVersionId,
+            request.Name.Trim(),
+            request.Terms.Select(term => term.Trim()).ToArray(),
+            request.Action,
+            request.Category.Trim().ToLowerInvariant(),
+            request.Weight,
+            request.WindowSize,
+            request.Language?.Trim(),
+            request.Scene?.Trim(),
+            request.EvidenceTemplate?.Trim(),
+            request.Priority,
+            request.Source?.Trim())).ToArray();
     }
 
     private static string NormalizeName(string name)
@@ -213,13 +341,16 @@ public sealed class RuleSetService(IRuleSetStore store) : IRuleSetService
             .ThenBy(rule => rule.Category)
             .ThenBy(rule => rule.Term);
         var responseRules = includeAllRules ? orderedRules : orderedRules.Take(previewRuleCount);
+        var totalRuleCount = ruleSet.Rules.Count +
+            ruleSet.RegexRules.Count +
+            ruleSet.CombinationRules.Count;
         return new RuleSetResponse(
             ruleSet.Id,
             ruleSet.PublicRevisionId,
             ruleSet.Name,
             ruleSet.Status,
-            ruleSet.Rules.Count,
-            !includeAllRules && ruleSet.Rules.Count > previewRuleCount,
+            totalRuleCount,
+            !includeAllRules && totalRuleCount > previewRuleCount,
             ruleSet.CreatedAt,
             ruleSet.UpdatedAt,
             ruleSet.LastValidatedAt,
@@ -234,7 +365,90 @@ public sealed class RuleSetService(IRuleSetStore store) : IRuleSetService
                     rule.Type,
                     rule.Category,
                     rule.Weight,
-                    rule.IsEnabled))
-                .ToArray());
+                    rule.IsEnabled,
+                    rule.Action,
+                    rule.MatchMode,
+                    rule.Language,
+                    rule.Scene,
+                    rule.EvidenceTemplate,
+                    rule.Priority,
+                    rule.Source))
+                .ToArray(),
+            ruleSet.NormalizationProfile,
+            includeAllRules
+                ? ruleSet.RegexRules
+                    .OrderBy(rule => rule.Priority)
+                    .ThenBy(rule => rule.Pattern)
+                    .Select(rule => new RegexRuleResponse(
+                        rule.Id,
+                        rule.Pattern,
+                        rule.Action,
+                        rule.Category,
+                        rule.Weight,
+                        rule.TimeoutMs,
+                        rule.MaxInputLength,
+                        rule.EngineMode,
+                        rule.Language,
+                        rule.Scene,
+                        rule.EvidenceTemplate,
+                        rule.Priority,
+                        rule.Source,
+                        rule.IsEnabled))
+                    .ToArray()
+                : [],
+            includeAllRules
+                ? ruleSet.CombinationRules
+                    .OrderBy(rule => rule.Priority)
+                    .ThenBy(rule => rule.Name)
+                    .Select(rule => new CombinationRuleResponse(
+                        rule.Id,
+                        rule.Name,
+                        rule.Terms,
+                        rule.Action,
+                        rule.Category,
+                        rule.Weight,
+                        rule.WindowSize,
+                        rule.Language,
+                        rule.Scene,
+                        rule.EvidenceTemplate,
+                        rule.Priority,
+                        rule.Source,
+                        rule.IsEnabled))
+                    .ToArray()
+                : []);
+    }
+
+    private async Task RecordChangeAsync(
+        RuleSetVersion ruleSet,
+        string action,
+        string? beforeJson,
+        CancellationToken cancellationToken)
+    {
+        var afterJson = OperationalFactPayloads.RuleSet(ruleSet, action);
+        await operationalFactService.RecordAuditAsync(
+            new AuditEntry(
+                null,
+                null,
+                null,
+                "admin",
+                null,
+                action,
+                "rule_set",
+                ruleSet.Id.ToString(),
+                beforeJson,
+                afterJson,
+                null,
+                ruleSet.UpdatedAt),
+            cancellationToken);
+        await operationalFactService.EnqueueAsync(
+            new OutboxMessage(
+                action,
+                "rule_set",
+                ruleSet.Id,
+                null,
+                null,
+                afterJson,
+                ruleSet.UpdatedAt),
+            cancellationToken);
     }
 }

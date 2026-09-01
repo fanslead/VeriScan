@@ -10,23 +10,32 @@ public sealed class ModerationItem
         Guid requestId,
         Guid tenantId,
         Guid applicationId,
+        int ordinal,
         string clientItemId,
         string content,
         string contentHash,
+        string contentHashKeyVersion,
         string? language,
         string contentType,
-        DateTimeOffset createdAt)
+        string? scene,
+        string? authorType,
+        DateTimeOffset createdAt,
+        ModerationProcessingStatus initialStatus = ModerationProcessingStatus.Processing)
     {
         Id = Guid.CreateVersion7();
         RequestId = requestId;
         TenantId = tenantId;
         ApplicationId = applicationId;
+        Ordinal = ordinal;
         ClientItemId = clientItemId;
         Content = content;
         ContentHash = contentHash;
+        ContentHashKeyVersion = contentHashKeyVersion;
         Language = language;
         ContentType = contentType;
-        ProcessingStatus = ModerationProcessingStatus.Processing;
+        Scene = scene;
+        AuthorType = authorType;
+        ProcessingStatus = initialStatus;
         Route = "rules";
         CreatedAt = createdAt;
     }
@@ -39,15 +48,23 @@ public sealed class ModerationItem
 
     public Guid ApplicationId { get; private set; }
 
+    public int Ordinal { get; private set; }
+
     public string ClientItemId { get; private set; } = string.Empty;
 
     public string Content { get; private set; } = string.Empty;
 
     public string ContentHash { get; private set; } = string.Empty;
 
+    public string ContentHashKeyVersion { get; private set; } = string.Empty;
+
     public string? Language { get; private set; }
 
     public string ContentType { get; private set; } = string.Empty;
+
+    public string? Scene { get; private set; }
+
+    public string? AuthorType { get; private set; }
 
     public ModerationProcessingStatus ProcessingStatus { get; private set; }
 
@@ -88,6 +105,31 @@ public sealed class ModerationItem
     public DateTimeOffset? FinalizedAt { get; private set; }
 
     public ModerationRequest? Request { get; private set; }
+
+    public void StartProcessing()
+    {
+        if (ProcessingStatus is ModerationProcessingStatus.Accepted or ModerationProcessingStatus.RetryWait)
+        {
+            ProcessingStatus = ModerationProcessingStatus.Processing;
+        }
+    }
+
+    public void MarkRetryWait()
+    {
+        if (ProcessingStatus == ModerationProcessingStatus.Processing)
+        {
+            ProcessingStatus = ModerationProcessingStatus.RetryWait;
+        }
+    }
+
+    public void Cancel(DateTimeOffset cancelledAt)
+    {
+        if (ProcessingStatus is ModerationProcessingStatus.Accepted or ModerationProcessingStatus.RetryWait)
+        {
+            ProcessingStatus = ModerationProcessingStatus.Cancelled;
+            FinalizedAt = cancelledAt;
+        }
+    }
 
     public void Complete(
         ModerationDecision decision,

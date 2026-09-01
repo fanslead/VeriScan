@@ -49,6 +49,20 @@
       },
       "protocolMappers": [
         {
+          "name": "veriscan-realm-roles",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-realm-role-mapper",
+          "consentRequired": false,
+          "config": {
+            "multivalued": "true",
+            "userinfo.token.claim": "true",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "realm_access.roles",
+            "jsonType.label": "String"
+          }
+        },
+        {
           "name": "veriscan-api-audience",
           "protocol": "openid-connect",
           "protocolMapper": "oidc-audience-mapper",
@@ -90,9 +104,56 @@
       {
         "name": "veriscan-auditor",
         "description": "本地开发审计人员，只读查看审计与统计"
+      },
+      {
+        "name": "veriscan-viewer",
+        "description": "只读查看应用、记录、规则和模型配置"
+      },
+      {
+        "name": "veriscan-ruleset-editor",
+        "description": "创建、编辑和校验规则草稿"
+      },
+      {
+        "name": "veriscan-ai-config-editor",
+        "description": "创建、编辑和测试模型配置草稿"
+      },
+      {
+        "name": "veriscan-publisher",
+        "description": "发布、激活、回滚和归档配置版本"
+      },
+      {
+        "name": "veriscan-platform-admin",
+        "description": "平台级管理员，可执行全部治理操作"
       }
     ]
   },
+  "users": [
+    {
+      "username": "veriscan-admin",
+      "enabled": true,
+      "email": "veriscan-admin@localhost.invalid",
+      "emailVerified": true,
+      "firstName": "明鉴",
+      "lastName": "管理员",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "veriscan-local-admin-change-me",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "veriscan-admin",
+        "veriscan-operator",
+        "veriscan-auditor",
+        "veriscan-viewer",
+        "veriscan-ruleset-editor",
+        "veriscan-ai-config-editor",
+        "veriscan-publisher",
+        "veriscan-platform-admin"
+      ]
+    }
+  ],
   "defaultDefaultClientScopes": [
     "profile",
     "email",

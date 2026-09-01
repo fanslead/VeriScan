@@ -33,10 +33,14 @@ public sealed class ModerationItemConfiguration : IEntityTypeConfiguration<Moder
         builder.ToTable("moderation_items");
         builder.HasKey(item => item.Id);
         builder.Property(item => item.ClientItemId).HasMaxLength(128).IsRequired();
+        builder.Property(item => item.Ordinal).IsRequired();
         builder.Property(item => item.Content).HasColumnType("text").IsRequired();
         builder.Property(item => item.ContentHash).HasMaxLength(64).IsRequired();
+        builder.Property(item => item.ContentHashKeyVersion).HasMaxLength(32).IsRequired();
         builder.Property(item => item.Language).HasMaxLength(32);
         builder.Property(item => item.ContentType).HasMaxLength(32).IsRequired();
+        builder.Property(item => item.Scene).HasMaxLength(64);
+        builder.Property(item => item.AuthorType).HasMaxLength(32);
         builder.Property(item => item.ProcessingStatus).HasConversion<string>().HasMaxLength(32).IsRequired();
         builder.Property(item => item.Decision).HasConversion<string>().HasMaxLength(32);
         builder.Property(item => item.ReviewSource).HasMaxLength(64);
@@ -50,5 +54,6 @@ public sealed class ModerationItemConfiguration : IEntityTypeConfiguration<Moder
         builder.Property(item => item.RiskScore).HasPrecision(6, 5);
         builder.HasIndex(item => new { item.ApplicationId, item.CreatedAt });
         builder.HasIndex(item => new { item.RequestId, item.ClientItemId }).IsUnique();
+        builder.HasIndex(item => new { item.RequestId, item.Ordinal }).IsUnique();
     }
 }

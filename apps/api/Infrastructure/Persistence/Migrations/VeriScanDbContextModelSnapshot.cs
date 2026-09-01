@@ -22,6 +22,79 @@ namespace VeriScan.Infrastructure.Persistence.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("VeriScan.Domain.Entities.AiInvocation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ApiKeyId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ApplicationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("AttemptNumber")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("CompletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ConfigurationRevision")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("FailureCode")
+                        .HasMaxLength(96)
+                        .HasColumnType("character varying(96)");
+
+                    b.Property<int?>("InputTokens")
+                        .HasColumnType("integer");
+
+                    b.Property<long?>("LatencyMilliseconds")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("ModerationItemId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ModerationRequestId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Outcome")
+                        .IsRequired()
+                        .HasMaxLength(48)
+                        .HasColumnType("character varying(48)");
+
+                    b.Property<int?>("OutputTokens")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("ProviderRequestId")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<DateTimeOffset>("StartedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ModerationItemId");
+
+                    b.HasIndex("ApiKeyId", "CompletedAt");
+
+                    b.HasIndex("ApplicationId", "CompletedAt");
+
+                    b.HasIndex("ModerationItemId", "AttemptNumber")
+                        .IsUnique();
+
+                    b.ToTable("ai_invocations", (string)null);
+                });
+
             modelBuilder.Entity("VeriScan.Domain.Entities.AiModelConfiguration", b =>
                 {
                     b.Property<Guid>("Id")
@@ -65,13 +138,13 @@ namespace VeriScan.Infrastructure.Persistence.Migrations
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("CredentialCiphertext")
+                        .HasColumnType("text");
+
                     b.Property<string>("CredentialRef")
                         .IsRequired()
                         .HasMaxLength(256)
                         .HasColumnType("character varying(256)");
-
-                    b.Property<string>("CredentialCiphertext")
-                        .HasColumnType("text");
 
                     b.Property<string>("DataRegion")
                         .IsRequired()
@@ -173,6 +246,62 @@ namespace VeriScan.Infrastructure.Persistence.Migrations
                         .IsUnique();
 
                     b.ToTable("ai_model_configurations", (string)null);
+                });
+
+            modelBuilder.Entity("VeriScan.Domain.Entities.ApiRequestEvent", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("ApiKeyId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("ApplicationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("AuthenticationOutcome")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<int>("HttpStatusCode")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("IdempotencyOutcome")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<int?>("ItemCount")
+                        .HasColumnType("integer");
+
+                    b.Property<long?>("LatencyMilliseconds")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid?>("ModerationRequestId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("OccurredAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("RouteTemplate")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<Guid?>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ModerationRequestId");
+
+                    b.HasIndex("ApiKeyId", "OccurredAt");
+
+                    b.HasIndex("ApplicationId", "OccurredAt");
+
+                    b.ToTable("api_request_events", (string)null);
                 });
 
             modelBuilder.Entity("VeriScan.Domain.Entities.ApplicationApiKey", b =>
@@ -305,6 +434,136 @@ namespace VeriScan.Infrastructure.Persistence.Migrations
                     b.ToTable("applications", (string)null);
                 });
 
+            modelBuilder.Entity("VeriScan.Domain.Entities.AuditEvent", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasMaxLength(96)
+                        .HasColumnType("character varying(96)");
+
+                    b.Property<string>("ActorId")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("ActorType")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("AfterJson")
+                        .HasColumnType("jsonb");
+
+                    b.Property<Guid?>("ApiKeyId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("ApplicationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("BeforeJson")
+                        .HasColumnType("jsonb");
+
+                    b.Property<string>("CorrelationId")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<DateTimeOffset>("OccurredAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ResourceId")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<string>("ResourceType")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<Guid?>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ActorId", "OccurredAt");
+
+                    b.HasIndex("ApplicationId", "OccurredAt");
+
+                    b.ToTable("audit_events", (string)null);
+                });
+
+            modelBuilder.Entity("VeriScan.Domain.Entities.CombinationRule", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("Category")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("EvidenceTemplate")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<bool>("IsEnabled")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Language")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<int>("Priority")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("RuleSetVersionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Scene")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("Source")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<string>("TermsJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<decimal>("Weight")
+                        .HasPrecision(5, 4)
+                        .HasColumnType("numeric(5,4)");
+
+                    b.Property<int>("WindowSize")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RuleSetVersionId", "Category");
+
+                    b.HasIndex("RuleSetVersionId", "IsEnabled", "Priority");
+
+                    b.ToTable("combination_rules", (string)null);
+                });
+
             modelBuilder.Entity("VeriScan.Domain.Entities.ModerationItem", b =>
                 {
                     b.Property<Guid>("Id")
@@ -328,6 +587,10 @@ namespace VeriScan.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("ApplicationId")
                         .HasColumnType("uuid");
 
+                    b.Property<string>("AuthorType")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
                     b.Property<string>("CategoriesText")
                         .IsRequired()
                         .HasColumnType("jsonb");
@@ -345,6 +608,11 @@ namespace VeriScan.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)");
+
+                    b.Property<string>("ContentHashKeyVersion")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
 
                     b.Property<string>("ContentType")
                         .IsRequired()
@@ -378,6 +646,9 @@ namespace VeriScan.Infrastructure.Persistence.Migrations
                     b.Property<DateTimeOffset?>("MachineCompletedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<int>("Ordinal")
+                        .HasColumnType("integer");
+
                     b.Property<string>("ProcessingStatus")
                         .IsRequired()
                         .HasMaxLength(32)
@@ -407,6 +678,10 @@ namespace VeriScan.Infrastructure.Persistence.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)");
 
+                    b.Property<string>("Scene")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
                     b.Property<string>("ScoreSource")
                         .HasColumnType("text");
 
@@ -420,7 +695,69 @@ namespace VeriScan.Infrastructure.Persistence.Migrations
                     b.HasIndex("RequestId", "ClientItemId")
                         .IsUnique();
 
+                    b.HasIndex("RequestId", "Ordinal")
+                        .IsUnique();
+
                     b.ToTable("moderation_items", (string)null);
+                });
+
+            modelBuilder.Entity("VeriScan.Domain.Entities.ModerationJob", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ApplicationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("AttemptCount")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("AvailableAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("LastErrorCode")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTimeOffset?>("LeaseExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("LeaseOwner")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<int>("MaximumAttempts")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Priority")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("RequestId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RequestId")
+                        .IsUnique();
+
+                    b.HasIndex("Status", "AvailableAt", "Priority");
+
+                    b.ToTable("moderation_jobs", (string)null);
                 });
 
             modelBuilder.Entity("VeriScan.Domain.Entities.ModerationRequest", b =>
@@ -481,6 +818,143 @@ namespace VeriScan.Infrastructure.Persistence.Migrations
                     b.ToTable("moderation_requests", (string)null);
                 });
 
+            modelBuilder.Entity("VeriScan.Domain.Entities.OutboxEvent", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("AggregateId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("AggregateType")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<Guid?>("ApplicationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("AttemptCount")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("AvailableAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("EventType")
+                        .IsRequired()
+                        .HasMaxLength(96)
+                        .HasColumnType("character varying(96)");
+
+                    b.Property<string>("LastErrorCode")
+                        .HasMaxLength(96)
+                        .HasColumnType("character varying(96)");
+
+                    b.Property<string>("LockToken")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<DateTimeOffset?>("LockedUntil")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("OccurredAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("PayloadJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<DateTimeOffset?>("PublishedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ApplicationId", "OccurredAt");
+
+                    b.HasIndex("PublishedAt", "AvailableAt", "OccurredAt");
+
+                    b.ToTable("outbox_events", (string)null);
+                });
+
+            modelBuilder.Entity("VeriScan.Domain.Entities.RegexRule", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("Category")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("EngineMode")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("EvidenceTemplate")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<bool>("IsEnabled")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Language")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<int>("MaxInputLength")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Pattern")
+                        .IsRequired()
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)");
+
+                    b.Property<int>("Priority")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("RuleSetVersionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Scene")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("Source")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<int>("TimeoutMs")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal>("Weight")
+                        .HasPrecision(5, 4)
+                        .HasColumnType("numeric(5,4)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RuleSetVersionId", "IsEnabled", "Priority");
+
+                    b.HasIndex("RuleSetVersionId", "Pattern", "Category");
+
+                    b.ToTable("regex_rules", (string)null);
+                });
+
             modelBuilder.Entity("VeriScan.Domain.Entities.RuleSetVersion", b =>
                 {
                     b.Property<Guid>("Id")
@@ -501,6 +975,11 @@ namespace VeriScan.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
+
+                    b.Property<string>("NormalizationProfile")
+                        .IsRequired()
+                        .HasMaxLength(48)
+                        .HasColumnType("character varying(48)");
 
                     b.Property<string>("PublicRevisionId")
                         .IsRequired()
@@ -533,11 +1012,169 @@ namespace VeriScan.Infrastructure.Persistence.Migrations
                     b.ToTable("rule_set_versions", (string)null);
                 });
 
+            modelBuilder.Entity("VeriScan.Domain.Entities.UsageConsumedEvent", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("ConsumedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ConsumerName")
+                        .IsRequired()
+                        .HasMaxLength(96)
+                        .HasColumnType("character varying(96)");
+
+                    b.Property<Guid>("OutboxEventId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ConsumerName", "OutboxEventId")
+                        .IsUnique();
+
+                    b.ToTable("usage_consumed_events", (string)null);
+                });
+
+            modelBuilder.Entity("VeriScan.Domain.Entities.UsageDaily", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("AiCallCount")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("AiFailureCount")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("ApiKeyId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ApplicationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("BucketStart")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long>("IdempotencyReplayCount")
+                        .HasColumnType("bigint");
+
+                    b.Property<long?>("InputTokens")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("ItemCount")
+                        .HasColumnType("bigint");
+
+                    b.Property<long?>("OutputTokens")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("PassCount")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("RejectCount")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("RequestCount")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("ReviewCount")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ApplicationId", "BucketStart");
+
+                    b.HasIndex("ApplicationId", "ApiKeyId", "BucketStart")
+                        .IsUnique();
+
+                    b.ToTable("usage_daily", (string)null);
+                });
+
+            modelBuilder.Entity("VeriScan.Domain.Entities.UsageHourly", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("AiCallCount")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("AiFailureCount")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("ApiKeyId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ApplicationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("BucketStart")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long>("IdempotencyReplayCount")
+                        .HasColumnType("bigint");
+
+                    b.Property<long?>("InputTokens")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("ItemCount")
+                        .HasColumnType("bigint");
+
+                    b.Property<long?>("OutputTokens")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("PassCount")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("RejectCount")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("RequestCount")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("ReviewCount")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ApplicationId", "BucketStart");
+
+                    b.HasIndex("ApplicationId", "ApiKeyId", "BucketStart")
+                        .IsUnique();
+
+                    b.ToTable("usage_hourly", (string)null);
+                });
+
             modelBuilder.Entity("VeriScan.Domain.Entities.WordRule", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
 
                     b.Property<string>("Category")
                         .IsRequired()
@@ -547,11 +1184,35 @@ namespace VeriScan.Infrastructure.Persistence.Migrations
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("EvidenceTemplate")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
                     b.Property<bool>("IsEnabled")
                         .HasColumnType("boolean");
 
+                    b.Property<string>("Language")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("MatchMode")
+                        .IsRequired()
+                        .HasMaxLength(48)
+                        .HasColumnType("character varying(48)");
+
+                    b.Property<int>("Priority")
+                        .HasColumnType("integer");
+
                     b.Property<Guid>("RuleSetVersionId")
                         .HasColumnType("uuid");
+
+                    b.Property<string>("Scene")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("Source")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
 
                     b.Property<string>("Term")
                         .IsRequired()
@@ -570,6 +1231,8 @@ namespace VeriScan.Infrastructure.Persistence.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("RuleSetVersionId", "Term");
+
+                    b.HasIndex("RuleSetVersionId", "IsEnabled", "Action");
 
                     b.HasIndex("RuleSetVersionId", "IsEnabled", "Type");
 
@@ -597,11 +1260,33 @@ namespace VeriScan.Infrastructure.Persistence.Migrations
                     b.Navigation("RuleSetVersion");
                 });
 
+            modelBuilder.Entity("VeriScan.Domain.Entities.CombinationRule", b =>
+                {
+                    b.HasOne("VeriScan.Domain.Entities.RuleSetVersion", "RuleSetVersion")
+                        .WithMany("CombinationRules")
+                        .HasForeignKey("RuleSetVersionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("RuleSetVersion");
+                });
+
             modelBuilder.Entity("VeriScan.Domain.Entities.ModerationItem", b =>
                 {
                     b.HasOne("VeriScan.Domain.Entities.ModerationRequest", "Request")
                         .WithMany("Items")
                         .HasForeignKey("RequestId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Request");
+                });
+
+            modelBuilder.Entity("VeriScan.Domain.Entities.ModerationJob", b =>
+                {
+                    b.HasOne("VeriScan.Domain.Entities.ModerationRequest", "Request")
+                        .WithOne()
+                        .HasForeignKey("VeriScan.Domain.Entities.ModerationJob", "RequestId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
@@ -617,6 +1302,17 @@ namespace VeriScan.Infrastructure.Persistence.Migrations
                         .IsRequired();
 
                     b.Navigation("Application");
+                });
+
+            modelBuilder.Entity("VeriScan.Domain.Entities.RegexRule", b =>
+                {
+                    b.HasOne("VeriScan.Domain.Entities.RuleSetVersion", "RuleSetVersion")
+                        .WithMany("RegexRules")
+                        .HasForeignKey("RuleSetVersionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("RuleSetVersion");
                 });
 
             modelBuilder.Entity("VeriScan.Domain.Entities.WordRule", b =>
@@ -645,6 +1341,10 @@ namespace VeriScan.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("VeriScan.Domain.Entities.RuleSetVersion", b =>
                 {
                     b.Navigation("Applications");
+
+                    b.Navigation("CombinationRules");
+
+                    b.Navigation("RegexRules");
 
                     b.Navigation("Rules");
                 });

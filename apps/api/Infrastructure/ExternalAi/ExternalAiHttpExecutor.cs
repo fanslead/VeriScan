@@ -1,7 +1,10 @@
 using System.Buffers;
+using System.Diagnostics;
 using System.Net;
 using System.Text;
 using Microsoft.Extensions.Options;
+using Polly.CircuitBreaker;
+using Polly.Timeout;
 using VeriScan.Domain.Entities;
 
 namespace VeriScan.Infrastructure.ExternalAi;
@@ -12,64 +15,94 @@ internal sealed record ExternalAiHttpResult(
     string? ProviderRequestId,
     string? FailureCode);
 
-public sealed class ExternalAiHttpExecutor(IOptionsMonitor<ExternalAiOptions> options)
+public sealed class ExternalAiHttpExecutor
 {
+    private readonly IOptionsMonitor<ExternalAiOptions> options;
+    private readonly ExternalAiResiliencePipelineProvider pipelineProvider;
+
+    public ExternalAiHttpExecutor(IOptionsMonitor<ExternalAiOptions> options)
+    {
+        this.options = options;
+        pipelineProvider = new ExternalAiResiliencePipelineProvider();
+    }
+
+    internal ExternalAiHttpExecutor(
+        IOptionsMonitor<ExternalAiOptions> options,
+        ExternalAiResiliencePipelineProvider pipelineProvider)
+    {
+        this.options = options;
+        this.pipelineProvider = pipelineProvider;
+    }
+
     internal async Task<ExternalAiHttpResult> ExecuteAsync(
         HttpClient client,
         AiModelConfiguration configuration,
         Func<HttpRequestMessage> requestFactory,
         CancellationToken cancellationToken)
     {
+        var currentOptions = options.CurrentValue;
         using var timeoutCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeoutCancellation.CancelAfter(TimeSpan.FromMilliseconds(Math.Max(1, configuration.RequestTimeoutMs)));
-        var attempts = Math.Clamp(configuration.MaxAttempts, 1, 3);
+        timeoutCancellation.CancelAfter(TimeSpan.FromMilliseconds(Math.Clamp(
+            configuration.RequestTimeoutMs,
+            1,
+            currentOptions.MaximumRequestTimeoutMs)));
 
-        for (var attempt = 1; attempt <= attempts; attempt++)
+        var protocol = configuration.Protocol.ToString();
+        var stopwatch = Stopwatch.StartNew();
+        try
         {
-            try
-            {
-                using var request = requestFactory();
-                using var response = await client.SendAsync(
-                    request,
-                    HttpCompletionOption.ResponseHeadersRead,
-                    timeoutCancellation.Token);
-                var body = await ReadBodyAsync(response, timeoutCancellation.Token);
-                var providerRequestId = GetProviderRequestId(response);
-                if (IsRetryable(response.StatusCode) && attempt < attempts)
+            var pipeline = pipelineProvider.GetPipeline(configuration, currentOptions);
+            using var response = await pipeline.ExecuteAsync(
+                async pipelineCancellationToken =>
                 {
-                    await DelayBeforeRetryAsync(response, attempt, timeoutCancellation.Token);
-                    continue;
-                }
-
-                return new ExternalAiHttpResult(response.StatusCode, body, providerRequestId, null);
-            }
-            catch (ExternalAiNetworkPolicyException)
-            {
-                return new ExternalAiHttpResult(null, null, null, "AI_NETWORK_POLICY_DENIED");
-            }
-            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
-            {
-                if (attempt < attempts)
-                {
-                    await DelayBeforeRetryAsync(null, attempt, timeoutCancellation.Token);
-                    continue;
-                }
-
-                return new ExternalAiHttpResult(null, null, null, "AI_TIMEOUT");
-            }
-            catch (HttpRequestException)
-            {
-                if (attempt < attempts)
-                {
-                    await DelayBeforeRetryAsync(null, attempt, timeoutCancellation.Token);
-                    continue;
-                }
-
-                return new ExternalAiHttpResult(null, null, null, "AI_NETWORK_ERROR");
-            }
+                    using var request = requestFactory();
+                    return await client.SendAsync(
+                        request,
+                        HttpCompletionOption.ResponseHeadersRead,
+                        pipelineCancellationToken);
+                },
+                timeoutCancellation.Token);
+            var body = await ReadBodyAsync(response, timeoutCancellation.Token);
+            var result = new ExternalAiHttpResult(
+                response.StatusCode,
+                body,
+                GetProviderRequestId(response),
+                null);
+            ExternalAiMetrics.RecordRequest(protocol, body is null ? "response_too_large" : MapResponseOutcome(response.StatusCode));
+            return result;
         }
-
-        return new ExternalAiHttpResult(null, null, null, "AI_NETWORK_ERROR");
+        catch (ExternalAiNetworkPolicyException)
+        {
+            ExternalAiMetrics.RecordRequest(protocol, "network_policy_denied");
+            return new ExternalAiHttpResult(null, null, null, "AI_NETWORK_POLICY_DENIED");
+        }
+        catch (BrokenCircuitException)
+        {
+            ExternalAiMetrics.RecordRequest(protocol, "circuit_open");
+            return new ExternalAiHttpResult(null, null, null, "AI_CIRCUIT_OPEN");
+        }
+        catch (TimeoutRejectedException)
+        {
+            ExternalAiMetrics.RecordTimeout(protocol);
+            ExternalAiMetrics.RecordRequest(protocol, "timeout");
+            return new ExternalAiHttpResult(null, null, null, "AI_TIMEOUT");
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            ExternalAiMetrics.RecordTimeout(protocol);
+            ExternalAiMetrics.RecordRequest(protocol, "timeout");
+            return new ExternalAiHttpResult(null, null, null, "AI_TIMEOUT");
+        }
+        catch (HttpRequestException)
+        {
+            ExternalAiMetrics.RecordRequest(protocol, "network_error");
+            return new ExternalAiHttpResult(null, null, null, "AI_NETWORK_ERROR");
+        }
+        finally
+        {
+            stopwatch.Stop();
+            ExternalAiMetrics.RecordDuration(protocol, stopwatch.Elapsed.TotalMilliseconds);
+        }
     }
 
     private async Task<string?> ReadBodyAsync(
@@ -82,7 +115,7 @@ public sealed class ExternalAiHttpExecutor(IOptionsMonitor<ExternalAiOptions> op
             return null;
         }
 
-        var maximumBytesWithProbe = maximumBytes + 1;
+        var maximumBytesWithProbe = checked(maximumBytes + 1);
         var buffer = ArrayPool<byte>.Shared.Rent(maximumBytesWithProbe);
         try
         {
@@ -118,27 +151,14 @@ public sealed class ExternalAiHttpExecutor(IOptionsMonitor<ExternalAiOptions> op
                 : null;
     }
 
-    private static bool IsRetryable(HttpStatusCode statusCode)
+    private static string MapResponseOutcome(HttpStatusCode statusCode)
     {
-        return statusCode == HttpStatusCode.RequestTimeout ||
-               statusCode == HttpStatusCode.TooManyRequests ||
-               (int)statusCode >= 500;
-    }
-
-    private static Task DelayBeforeRetryAsync(
-        HttpResponseMessage? response,
-        int attempt,
-        CancellationToken cancellationToken)
-    {
-        var delay = response?.Headers.RetryAfter?.Delta;
-        if (delay is null && response?.Headers.RetryAfter?.Date is { } retryAt)
+        return statusCode switch
         {
-            delay = retryAt - DateTimeOffset.UtcNow;
-        }
-
-        var delayMs = delay is { } retryDelay && retryDelay > TimeSpan.Zero
-            ? Math.Min(5_000, (int)Math.Min(int.MaxValue, retryDelay.TotalMilliseconds))
-            : Math.Min(1_000, 100 * (1 << Math.Min(attempt - 1, 3)));
-        return Task.Delay(delayMs, cancellationToken);
+            >= HttpStatusCode.OK and < HttpStatusCode.MultipleChoices => "success",
+            HttpStatusCode.TooManyRequests => "rate_limited",
+            >= HttpStatusCode.InternalServerError => "provider_error",
+            _ => "provider_rejected"
+        };
     }
 }

@@ -14,7 +14,8 @@ public sealed class ModerationRequest
         string policyRevision,
         string? idempotencyKeyDigest,
         string? requestFingerprint,
-        DateTimeOffset submittedAt)
+        DateTimeOffset submittedAt,
+        ModerationProcessingStatus initialStatus = ModerationProcessingStatus.Processing)
     {
         Id = Guid.CreateVersion7();
         TenantId = tenantId;
@@ -24,7 +25,7 @@ public sealed class ModerationRequest
         PolicyRevision = policyRevision;
         IdempotencyKeyDigest = idempotencyKeyDigest;
         RequestFingerprint = requestFingerprint;
-        ProcessingStatus = ModerationProcessingStatus.Processing;
+        ProcessingStatus = initialStatus;
         SubmittedAt = submittedAt;
     }
 
@@ -61,13 +62,58 @@ public sealed class ModerationRequest
         Items.Add(item);
     }
 
+    public void StartProcessing()
+    {
+        if (ProcessingStatus is ModerationProcessingStatus.Accepted or ModerationProcessingStatus.RetryWait)
+        {
+            ProcessingStatus = ModerationProcessingStatus.Processing;
+        }
+    }
+
+    public void MarkRetryWait()
+    {
+        if (ProcessingStatus == ModerationProcessingStatus.Processing)
+        {
+            ProcessingStatus = ModerationProcessingStatus.RetryWait;
+        }
+    }
+
+    public void Cancel(DateTimeOffset cancelledAt)
+    {
+        if (ProcessingStatus is not (ModerationProcessingStatus.Accepted or ModerationProcessingStatus.RetryWait))
+        {
+            throw new InvalidOperationException("只有尚未开始的审核批次可以取消。");
+        }
+
+        foreach (var item in Items)
+        {
+            item.Cancel(cancelledAt);
+        }
+
+        ProcessingStatus = ModerationProcessingStatus.Cancelled;
+        FinalizedAt = cancelledAt;
+    }
+
+    public void Fail(DateTimeOffset failedAt)
+    {
+        ProcessingStatus = ModerationProcessingStatus.Failed;
+        MachineCompletedAt = failedAt;
+        FinalizedAt = failedAt;
+    }
+
     public void Complete(DateTimeOffset completedAt)
     {
         MachineCompletedAt = completedAt;
         FinalizedAt = completedAt;
-        ProcessingStatus = Items.Any(item => item.ProcessingStatus == ModerationProcessingStatus.Failed)
+        var hasCompleted = Items.Any(item => item.ProcessingStatus == ModerationProcessingStatus.Completed);
+        var hasError = Items.Any(item => item.ProcessingStatus is ModerationProcessingStatus.Failed or ModerationProcessingStatus.Cancelled);
+        ProcessingStatus = hasCompleted && hasError
             ? ModerationProcessingStatus.CompletedWithErrors
-            : ModerationProcessingStatus.Completed;
+            : hasCompleted
+                ? ModerationProcessingStatus.Completed
+                : Items.All(item => item.ProcessingStatus == ModerationProcessingStatus.Cancelled)
+                    ? ModerationProcessingStatus.Cancelled
+                    : ModerationProcessingStatus.Failed;
     }
 }
 

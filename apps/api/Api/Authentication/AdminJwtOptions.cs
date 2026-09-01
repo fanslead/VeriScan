@@ -10,6 +10,8 @@ public sealed class AdminJwtOptions
 
     public string Authority { get; set; } = string.Empty;
 
+    public string? MetadataAddress { get; set; }
+
     public string Audience { get; set; } = "veriscan-api";
 
     public bool RequireHttpsMetadata { get; set; } = true;

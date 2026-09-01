@@ -26,7 +26,8 @@ public interface IApplicationService
 public sealed class ApplicationService(
     IApplicationStore applicationStore,
     IRuleSetStore ruleSetStore,
-    IApiKeyCacheInvalidator cacheInvalidator) : IApplicationService
+    IApiKeyCacheInvalidator cacheInvalidator,
+    IOperationalFactService operationalFactService) : IApplicationService
 {
     public async Task<ApplicationResponse> CreateAsync(
         CreateApplicationRequest request,
@@ -42,6 +43,32 @@ public sealed class ApplicationService(
             defaultRuleSet?.Id);
 
         await applicationStore.AddAsync(application, cancellationToken);
+        var afterJson = OperationalFactPayloads.Application(application, "created");
+        await operationalFactService.RecordAuditAsync(
+            new AuditEntry(
+                application.TenantId,
+                application.Id,
+                null,
+                "admin",
+                null,
+                "application.created",
+                "application",
+                application.Id.ToString(),
+                null,
+                afterJson,
+                null,
+                application.CreatedAt),
+            cancellationToken);
+        await operationalFactService.EnqueueAsync(
+            new OutboxMessage(
+                "application.created",
+                "application",
+                application.Id,
+                application.TenantId,
+                application.Id,
+                afterJson,
+                application.CreatedAt),
+            cancellationToken);
         await applicationStore.SaveChangesAsync(cancellationToken);
 
         return ApplicationMappings.ToResponseWithRuleSet(application, defaultRuleSet, 0);
@@ -76,6 +103,7 @@ public sealed class ApplicationService(
     {
         var application = await applicationStore.GetByIdAsync(applicationId, cancellationToken)
             ?? throw new ResourceNotFoundException("应用不存在。");
+        var beforeJson = OperationalFactPayloads.Application(application, "before_update");
 
         if (request.Name is not null)
         {
@@ -100,6 +128,32 @@ public sealed class ApplicationService(
             }
         }
 
+        var afterJson = OperationalFactPayloads.Application(application, "updated");
+        await operationalFactService.RecordAuditAsync(
+            new AuditEntry(
+                application.TenantId,
+                application.Id,
+                null,
+                "admin",
+                null,
+                "application.updated",
+                "application",
+                application.Id.ToString(),
+                beforeJson,
+                afterJson,
+                null,
+                application.UpdatedAt),
+            cancellationToken);
+        await operationalFactService.EnqueueAsync(
+            new OutboxMessage(
+                "application.updated",
+                "application",
+                application.Id,
+                application.TenantId,
+                application.Id,
+                afterJson,
+                application.UpdatedAt),
+            cancellationToken);
         await applicationStore.SaveChangesAsync(cancellationToken);
         if (request.Status.HasValue)
         {
@@ -138,9 +192,36 @@ public sealed class ApplicationService(
         }
 
         var changedAt = DateTimeOffset.UtcNow;
+        var beforeJson = OperationalFactPayloads.Application(application, "before_bind_rule_set");
         application.RuleSetVersion?.RecordBindingChange(changedAt);
         ruleSet.RecordBindingChange(changedAt);
         application.BindRuleSet(ruleSet.Id, changedAt);
+        var afterJson = OperationalFactPayloads.Application(application, "bound_rule_set");
+        await operationalFactService.RecordAuditAsync(
+            new AuditEntry(
+                application.TenantId,
+                application.Id,
+                null,
+                "admin",
+                null,
+                "application.rule_set_bound",
+                "application",
+                application.Id.ToString(),
+                beforeJson,
+                afterJson,
+                null,
+                changedAt),
+            cancellationToken);
+        await operationalFactService.EnqueueAsync(
+            new OutboxMessage(
+                "application.rule_set_bound",
+                "application",
+                application.Id,
+                application.TenantId,
+                application.Id,
+                afterJson,
+                changedAt),
+            cancellationToken);
         try
         {
             await applicationStore.SaveChangesAsync(cancellationToken);

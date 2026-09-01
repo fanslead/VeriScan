@@ -10,4 +10,9 @@ public sealed class ModerationExecutionPolicy(IConfiguration configuration)
         configuration.GetValue("ExternalAi:MaximumConcurrentCallsPerBatch", 4),
         1,
         16);
+
+    public TimeSpan SynchronousDeadline { get; } = TimeSpan.FromMilliseconds(Math.Clamp(
+        configuration.GetValue("ExternalAi:MaximumSynchronousBatchMs", 30_000),
+        1_000,
+        120_000));
 }

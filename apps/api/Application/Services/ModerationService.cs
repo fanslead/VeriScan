@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 using VeriScan.Application.Abstractions;
@@ -18,17 +19,32 @@ public interface IModerationService
         Guid requestId,
         ApiKeyPrincipalData principal,
         CancellationToken cancellationToken);
+
+    Task<BatchModerationResponse> CancelBatchAsync(
+        Guid requestId,
+        ApiKeyPrincipalData principal,
+        CancellationToken cancellationToken);
+
+    Task ProcessQueuedBatchAsync(Guid requestId, CancellationToken cancellationToken);
 }
 
 public sealed class ModerationService(
     IModerationStore moderationStore,
+    IModerationJobStore moderationJobStore,
     IRuleSetStore ruleSetStore,
     IRuleModerationEngine ruleModerationEngine,
     IModerationAiClient moderationAiClient,
     IContentHashService contentHashService,
-    IModerationExecutionPolicy executionPolicy) : IModerationService
+    IIdempotencyDigestService idempotencyDigestService,
+    IModerationContentProtector contentProtector,
+    IModerationExecutionPolicy executionPolicy,
+    IModerationQueuePolicy queuePolicy,
+    IOperationalFactService operationalFactService) : IModerationService
 {
     private const int MaximumContentBytes = 64 * 1024;
+    private const int HttpOkStatus = 200;
+    private const int HttpAcceptedStatus = 202;
+    private const int HttpConflictStatus = 409;
 
     public async Task<BatchModerationResponse> CreateBatchAsync(
         BatchModerationRequest request,
@@ -36,14 +52,482 @@ public sealed class ModerationService(
         string? idempotencyKey,
         CancellationToken cancellationToken)
     {
-        if (request.Mode == ModerationMode.Async)
+        var requestStopwatch = Stopwatch.StartNew();
+        ValidateRequest(request);
+
+        var ruleSet = await GetPublishedRuleSetAsync(
+            principal.ApplicationId,
+            request.PolicyId,
+            cancellationToken);
+        var identity = ModerationRequestIdentity.Create(
+            principal.ApplicationId,
+            idempotencyKey,
+            request,
+            ruleSet.PublicRevisionId,
+            idempotencyDigestService);
+        if (identity.IdempotencyKeyDigest is not null)
         {
-            throw new UnsupportedOperationException("异步审核将在后台任务模块启用。");
+            var replay = await moderationStore.GetByIdempotencyKeyAsync(
+                principal.ApplicationId,
+                identity.IdempotencyKeyDigest,
+                cancellationToken);
+            if (replay is not null)
+            {
+                return await ResolveReplayAsync(
+                    replay,
+                    identity.RequestFingerprint,
+                    principal,
+                    request.Items.Count,
+                    "replay",
+                    requestStopwatch,
+                    cancellationToken);
+            }
         }
 
-        if (request.Items.Count == 0 || request.Items.Count > 100)
+        var rules = ruleSet.Rules
+            .Where(rule => rule.IsEnabled)
+            .OrderByDescending(rule => rule.Weight)
+            .ToArray();
+        var normalizationOptions = RuleNormalizationOptions.ForProfile(ruleSet.NormalizationProfile);
+        var compiledPolicy = ruleModerationEngine.GetOrCompile(
+            ruleSet.PublicRevisionId,
+            rules,
+            ruleSet.RegexRules.Where(rule => rule.IsEnabled).ToArray(),
+            ruleSet.CombinationRules.Where(rule => rule.IsEnabled).ToArray(),
+            normalizationOptions);
+        var evaluations = request.Items
+            .Select(item => compiledPolicy.Evaluate(
+                item.Content,
+                item.Language,
+                item.Context?.Scene))
+            .ToArray();
+        var enqueue = ShouldEnqueue(request, evaluations);
+        var submittedAt = DateTimeOffset.UtcNow;
+        var initialStatus = enqueue
+            ? ModerationProcessingStatus.Accepted
+            : ModerationProcessingStatus.Processing;
+        var moderationRequest = new ModerationRequest(
+            principal.TenantId,
+            principal.ApplicationId,
+            principal.KeyId,
+            request.Mode.ToString().ToLowerInvariant(),
+            ruleSet.PublicRevisionId,
+            identity.IdempotencyKeyDigest,
+            identity.RequestFingerprint,
+            submittedAt,
+            initialStatus);
+
+        var workItems = new ModerationWorkItem[request.Items.Count];
+        for (var index = 0; index < request.Items.Count; index++)
         {
-            throw new RequestValidationException("审核内容数量必须在 1 到 100 条之间。");
+            var item = request.Items[index];
+            var entity = new ModerationItem(
+                moderationRequest.Id,
+                principal.TenantId,
+                principal.ApplicationId,
+                index,
+                item.Id,
+                contentProtector.Protect(item.Content),
+                contentHashService.Compute(item.Content),
+                contentHashService.KeyVersion,
+                item.Language,
+                item.ContentType,
+                item.Context?.Scene,
+                item.Context?.AuthorType,
+                submittedAt,
+                initialStatus);
+            moderationRequest.AddItem(entity);
+            workItems[index] = new ModerationWorkItem(
+                entity,
+                item.Content,
+                evaluations[index],
+                normalizationOptions);
+        }
+
+        var job = enqueue
+            ? new ModerationJob(
+                principal.TenantId,
+                principal.ApplicationId,
+                moderationRequest.Id,
+                priority: 0,
+                maximumAttempts: queuePolicy.MaximumAttempts,
+                submittedAt)
+            : null;
+        var reserved = await moderationStore.TryReserveAsync(
+            moderationRequest,
+            job,
+            cancellationToken);
+        if (!reserved)
+        {
+            var replay = await moderationStore.GetByIdempotencyKeyAsync(
+                principal.ApplicationId,
+                identity.IdempotencyKeyDigest!,
+                cancellationToken)
+                ?? throw new RequestConflictException("相同幂等键的请求正在建立，请稍后重试。");
+            return await ResolveReplayAsync(
+                replay,
+                identity.RequestFingerprint,
+                principal,
+                request.Items.Count,
+                "reservation_race_replay",
+                requestStopwatch,
+                cancellationToken);
+        }
+
+        if (enqueue)
+        {
+            await RecordSubmissionFactAsync(
+                moderationRequest,
+                principal,
+                request.Items.Count,
+                identity.IdempotencyKeyDigest is null ? "new" : "new_idempotent",
+                HttpAcceptedStatus,
+                requestStopwatch,
+                "accepted",
+                cancellationToken);
+            return ModerationMappings.ToResponse(moderationRequest);
+        }
+
+        using var deadlineSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        deadlineSource.CancelAfter(executionPolicy.SynchronousDeadline);
+        try
+        {
+            await ExecuteAsync(
+                moderationRequest,
+                workItems,
+                1,
+                identity.IdempotencyKeyDigest is null ? "new" : "new_idempotent",
+                requestStopwatch,
+                true,
+                deadlineSource.Token);
+        }
+        catch (OperationCanceledException) when (
+            !cancellationToken.IsCancellationRequested && deadlineSource.IsCancellationRequested)
+        {
+            var failedAt = DateTimeOffset.UtcNow;
+            foreach (var workItem in workItems.Where(workItem =>
+                         workItem.Entity.ProcessingStatus == ModerationProcessingStatus.Processing))
+            {
+                workItem.Entity.Fail("SYNC_DEADLINE_EXCEEDED", failedAt);
+            }
+
+            moderationRequest.Fail(failedAt);
+            await moderationStore.SaveChangesAsync(CancellationToken.None);
+            throw new RequestTimeoutException(
+                $"同步审核超过 {executionPolicy.SynchronousDeadline.TotalSeconds:0} 秒截止时间，可使用 requestId 查询失败记录。");
+        }
+
+        return ModerationMappings.ToResponse(moderationRequest);
+    }
+
+    public async Task ProcessQueuedBatchAsync(Guid requestId, CancellationToken cancellationToken)
+    {
+        var request = await moderationStore.GetForProcessingAsync(requestId, cancellationToken)
+            ?? throw new ResourceNotFoundException("审核批次不存在。");
+        if (request.ProcessingStatus is ModerationProcessingStatus.Completed or
+            ModerationProcessingStatus.CompletedWithErrors or
+            ModerationProcessingStatus.Failed or
+            ModerationProcessingStatus.Cancelled)
+        {
+            return;
+        }
+
+        var ruleSet = await ruleSetStore.GetByPublicRevisionIdAsync(
+            request.PolicyRevision,
+            cancellationToken)
+            ?? throw new RequestConflictException("审核批次绑定的规则版本不可用。");
+        if (ruleSet.Status != RuleSetStatus.Published)
+        {
+            throw new RequestConflictException("审核批次绑定的规则版本未发布。");
+        }
+
+        request.StartProcessing();
+        var rules = ruleSet.Rules
+            .Where(rule => rule.IsEnabled)
+            .OrderByDescending(rule => rule.Weight)
+            .ToArray();
+        var normalizationOptions = RuleNormalizationOptions.ForProfile(ruleSet.NormalizationProfile);
+        var compiledPolicy = ruleModerationEngine.GetOrCompile(
+            ruleSet.PublicRevisionId,
+            rules,
+            ruleSet.RegexRules.Where(rule => rule.IsEnabled).ToArray(),
+            ruleSet.CombinationRules.Where(rule => rule.IsEnabled).ToArray(),
+            normalizationOptions);
+        var workItems = request.Items
+            .OrderBy(item => item.Ordinal)
+            .Where(item => item.ProcessingStatus is not (
+                ModerationProcessingStatus.Completed or
+                ModerationProcessingStatus.Failed or
+                ModerationProcessingStatus.Cancelled))
+            .Select(item =>
+            {
+                item.StartProcessing();
+                var content = contentProtector.Unprotect(item.Content);
+                return new ModerationWorkItem(
+                    item,
+                    content,
+                    compiledPolicy.Evaluate(content, item.Language, item.Scene),
+                    normalizationOptions);
+            })
+            .ToArray();
+        var processingJob = await moderationJobStore.GetByRequestIdAsync(
+            request.ApplicationId,
+            request.Id,
+            cancellationToken);
+        await ExecuteAsync(
+            request,
+            workItems,
+            processingJob?.AttemptCount ?? 1,
+            "async_worker",
+            null,
+            false,
+            cancellationToken);
+    }
+
+    public async Task<BatchModerationResponse> GetBatchAsync(
+        Guid requestId,
+        ApiKeyPrincipalData principal,
+        CancellationToken cancellationToken)
+    {
+        var moderationRequest = await moderationStore.GetByIdAsync(
+            principal.ApplicationId,
+            requestId,
+            cancellationToken);
+        if (moderationRequest is null)
+        {
+            throw new ResourceNotFoundException("审核批次不存在。");
+        }
+
+        return ModerationMappings.ToResponse(moderationRequest);
+    }
+
+    public async Task<BatchModerationResponse> CancelBatchAsync(
+        Guid requestId,
+        ApiKeyPrincipalData principal,
+        CancellationToken cancellationToken)
+    {
+        var job = await moderationJobStore.GetByRequestIdAsync(
+            principal.ApplicationId,
+            requestId,
+            cancellationToken)
+            ?? throw new ResourceNotFoundException("异步审核批次不存在。");
+        if (job.Status == ModerationJobStatus.Cancelled && job.Request is not null)
+        {
+            return ModerationMappings.ToResponse(job.Request);
+        }
+
+        if (job.Status is not (ModerationJobStatus.Pending or ModerationJobStatus.RetryWait) ||
+            job.Request is null)
+        {
+            throw new RequestConflictException("审核批次已经开始或已终结，无法取消。");
+        }
+
+        var cancelledAt = DateTimeOffset.UtcNow;
+        job.Cancel(cancelledAt);
+        job.Request.Cancel(cancelledAt);
+        await operationalFactService.RecordApiRequestAsync(
+            new ApiRequestMeasurement(
+                job.Request.TenantId,
+                job.Request.ApplicationId,
+                principal.KeyId,
+                job.Request.Id,
+                "/api/v1/moderation/batches/{requestId}/cancel",
+                "authenticated",
+                "cancel",
+                HttpOkStatus,
+                job.Request.Items.Count,
+                null,
+                cancelledAt),
+            cancellationToken);
+        var payload = OperationalFactPayloads.Moderation(
+            job.Request,
+            "cancelled",
+            job.Request.Items.Count,
+            0,
+            0);
+        await operationalFactService.EnqueueAsync(
+            new OutboxMessage(
+                "moderation.cancelled",
+                "moderation_request",
+                job.Request.Id,
+                job.Request.TenantId,
+                job.Request.ApplicationId,
+                payload,
+                cancelledAt),
+            cancellationToken);
+        await moderationJobStore.SaveChangesAsync(cancellationToken);
+        return ModerationMappings.ToResponse(job.Request);
+    }
+
+    private async Task ExecuteAsync(
+        ModerationRequest request,
+        IReadOnlyCollection<ModerationWorkItem> workItems,
+        int attemptNumber,
+        string idempotencyOutcome,
+        Stopwatch? requestStopwatch,
+        bool recordApiRequest,
+        CancellationToken cancellationToken)
+    {
+        await Parallel.ForEachAsync(
+            workItems.Where(workItem => workItem.RuleEvaluation.RequiresAi),
+            new ParallelOptions
+            {
+                MaxDegreeOfParallelism = executionPolicy.MaximumConcurrentAiCalls,
+                CancellationToken = cancellationToken
+            },
+            async (workItem, itemCancellationToken) =>
+            {
+                workItem.AiStartedAt = DateTimeOffset.UtcNow;
+                workItem.AiResult = await moderationAiClient.ModerateAsync(
+                    new AiModerationRequest(
+                        request.TenantId,
+                        request.ApplicationId,
+                        workItem.Content,
+                        workItem.Entity.Language),
+                    itemCancellationToken);
+                workItem.AiCompletedAt = DateTimeOffset.UtcNow;
+            });
+
+        foreach (var workItem in workItems)
+        {
+            var aiResult = workItem.AiResult;
+            var evaluation = aiResult is null
+                ? workItem.RuleEvaluation
+                : AiModerationMappings.ToEvaluation(
+                    aiResult,
+                    workItem.RuleEvaluation,
+                    workItem.Content,
+                    workItem.NormalizationOptions);
+            workItem.Entity.Complete(
+                evaluation.Decision,
+                evaluation.ReviewSource,
+                evaluation.Degraded,
+                evaluation.RiskScore,
+                evaluation.ScoreSource,
+                evaluation.Route,
+                JsonSerializer.Serialize(evaluation.ReasonCodes),
+                JsonSerializer.Serialize(evaluation.Categories),
+                JsonSerializer.Serialize(
+                    evaluation.EvidenceDetails.Count > 0
+                        ? (object)evaluation.EvidenceDetails
+                        : evaluation.Evidence),
+                DateTimeOffset.UtcNow,
+                aiResult?.ConfigurationRevision,
+                aiResult?.ProviderRequestId,
+                aiResult?.InputTokens,
+                aiResult?.OutputTokens,
+                aiResult?.FailureCode);
+
+            if (aiResult is not null &&
+                workItem.AiStartedAt is { } aiStartedAt &&
+                workItem.AiCompletedAt is { } aiCompletedAt)
+            {
+                await operationalFactService.RecordAiInvocationAsync(
+                    new AiInvocationMeasurement(
+                        request.TenantId,
+                        request.ApplicationId,
+                        request.CreatedByApiKeyId,
+                        request.Id,
+                        workItem.Entity.Id,
+                        aiResult.Outcome.ToString(),
+                        aiResult.ConfigurationRevision,
+                        aiResult.ProviderRequestId,
+                        attemptNumber,
+                        aiResult.InputTokens,
+                        aiResult.OutputTokens,
+                        aiResult.FailureCode,
+                        Math.Max(0, (long)(aiCompletedAt - aiStartedAt).TotalMilliseconds),
+                        aiStartedAt,
+                        aiCompletedAt),
+                    cancellationToken);
+            }
+        }
+
+        request.Complete(DateTimeOffset.UtcNow);
+        if (recordApiRequest)
+        {
+            var completedAt = request.FinalizedAt ?? DateTimeOffset.UtcNow;
+            await operationalFactService.RecordApiRequestAsync(
+                new ApiRequestMeasurement(
+                    request.TenantId,
+                    request.ApplicationId,
+                    request.CreatedByApiKeyId,
+                    request.Id,
+                    "/api/v1/moderation/batches",
+                    "authenticated",
+                    idempotencyOutcome,
+                    HttpOkStatus,
+                    request.Items.Count,
+                    requestStopwatch is null
+                        ? null
+                        : Math.Max(0, requestStopwatch.ElapsedMilliseconds),
+                    completedAt),
+                cancellationToken);
+        }
+
+        var aiCallCount = workItems.LongCount(workItem => workItem.AiResult is not null);
+        var aiFailureCount = workItems.LongCount(workItem =>
+            workItem.AiResult?.FailureCode is not null);
+        var moderationPayload = OperationalFactPayloads.Moderation(
+            request,
+            "completed",
+            request.Items.Count,
+            aiCallCount,
+            aiFailureCount);
+        await operationalFactService.EnqueueAsync(
+            new OutboxMessage(
+                "moderation.completed",
+                "moderation_request",
+                request.Id,
+                request.TenantId,
+                request.ApplicationId,
+                moderationPayload,
+                request.FinalizedAt ?? DateTimeOffset.UtcNow),
+            cancellationToken);
+        await moderationStore.SaveChangesAsync(cancellationToken);
+    }
+
+    private async Task<RuleSetVersion> GetPublishedRuleSetAsync(
+        Guid applicationId,
+        string? requestedPolicyId,
+        CancellationToken cancellationToken)
+    {
+        var ruleSet = await ruleSetStore.GetBoundForApplicationAsync(applicationId, cancellationToken);
+        if (ruleSet is null || ruleSet.Status != RuleSetStatus.Published)
+        {
+            throw new RequestConflictException("应用尚未绑定可用的已发布规则集。");
+        }
+
+        if (!string.IsNullOrWhiteSpace(requestedPolicyId) &&
+            !string.Equals(requestedPolicyId.Trim(), ruleSet.PublicRevisionId, StringComparison.Ordinal))
+        {
+            throw new RequestConflictException("请求策略与应用当前绑定的规则集不一致。");
+        }
+
+        return ruleSet;
+    }
+
+    private bool ShouldEnqueue(
+        BatchModerationRequest request,
+        IReadOnlyCollection<RuleEvaluation> evaluations)
+    {
+        return request.Mode == ModerationMode.Async ||
+               request.Mode == ModerationMode.Auto &&
+               (request.Items.Count > queuePolicy.AutoAsyncItemThreshold ||
+                evaluations.Count(evaluation => evaluation.RequiresAi) > queuePolicy.AutoAsyncAiThreshold);
+    }
+
+    private void ValidateRequest(BatchModerationRequest request)
+    {
+        var maximumItems = request.Mode == ModerationMode.Sync
+            ? queuePolicy.MaximumSyncItems
+            : queuePolicy.MaximumAsyncItems;
+        if (request.Items.Count == 0 || request.Items.Count > maximumItems)
+        {
+            throw new RequestValidationException(
+                request.Mode == ModerationMode.Sync
+                    ? $"同步审核内容数量必须在 1 到 {queuePolicy.MaximumSyncItems} 条之间。"
+                    : $"异步或自动审核内容数量必须在 1 到 {queuePolicy.MaximumAsyncItems} 条之间。");
         }
 
         var itemIds = new HashSet<string>(StringComparer.Ordinal);
@@ -56,7 +540,7 @@ public sealed class ModerationService(
 
             if (Encoding.UTF8.GetByteCount(item.Content) > MaximumContentBytes)
             {
-                throw new RequestValidationException("单条内容超过大小限制。");
+                throw new RequestValidationException("单条内容超过 64 KiB 限制。");
             }
 
             if (!string.Equals(item.ContentType, "plain_text", StringComparison.OrdinalIgnoreCase))
@@ -64,187 +548,120 @@ public sealed class ModerationService(
                 throw new RequestValidationException("当前版本只支持纯文本内容。");
             }
         }
-
-        var ruleSet = await ruleSetStore.GetBoundForApplicationAsync(
-            principal.ApplicationId,
-            cancellationToken);
-        if (ruleSet is null || ruleSet.Status != RuleSetStatus.Published)
-        {
-            throw new RequestConflictException("应用尚未绑定可用的已发布规则集。");
-        }
-
-        if (!string.IsNullOrWhiteSpace(request.PolicyId) &&
-            !string.Equals(
-                request.PolicyId.Trim(),
-                ruleSet.PublicRevisionId,
-                StringComparison.Ordinal))
-        {
-            throw new RequestConflictException("请求策略与应用当前绑定的规则集不一致。");
-        }
-
-        var identity = ModerationRequestIdentity.Create(
-            principal.ApplicationId,
-            idempotencyKey,
-            request,
-            ruleSet.PublicRevisionId,
-            contentHashService);
-        if (identity.IdempotencyKeyDigest is not null)
-        {
-            var replay = await moderationStore.GetByIdempotencyKeyAsync(
-                principal.ApplicationId,
-                identity.IdempotencyKeyDigest,
-                cancellationToken);
-            if (replay is not null)
-            {
-                return ResolveReplay(replay, identity.RequestFingerprint);
-            }
-        }
-
-        var submittedAt = DateTimeOffset.UtcNow;
-        var moderationRequest = new ModerationRequest(
-            principal.TenantId,
-            principal.ApplicationId,
-            principal.KeyId,
-            request.Mode.ToString().ToLowerInvariant(),
-            ruleSet.PublicRevisionId,
-            identity.IdempotencyKeyDigest,
-            identity.RequestFingerprint,
-            submittedAt);
-        var reserved = await moderationStore.TryReserveAsync(moderationRequest, cancellationToken);
-        if (!reserved)
-        {
-            var replay = await moderationStore.GetByIdempotencyKeyAsync(
-                principal.ApplicationId,
-                identity.IdempotencyKeyDigest!,
-                cancellationToken)
-                ?? throw new RequestConflictException("相同幂等键的请求正在建立，请稍后重试。");
-            return ResolveReplay(replay, identity.RequestFingerprint);
-        }
-
-        var rules = ruleSet.Rules
-            .Where(rule => rule.IsEnabled)
-            .OrderByDescending(rule => rule.Weight)
-            .ToArray();
-        var compiledPolicy = ruleModerationEngine.GetOrCompile(ruleSet.PublicRevisionId, rules);
-
-        var workItems = request.Items
-            .Select(item => new ModerationWorkItem(
-                item,
-                new ModerationItem(
-                    moderationRequest.Id,
-                    principal.TenantId,
-                    principal.ApplicationId,
-                    item.Id,
-                    item.Content,
-                    contentHashService.Compute(item.Content),
-                    item.Language,
-                    item.ContentType,
-                    submittedAt),
-                compiledPolicy.Evaluate(item.Content)))
-            .ToArray();
-
-        await Parallel.ForEachAsync(
-            workItems.Where(workItem => workItem.RuleEvaluation.RequiresAi),
-            new ParallelOptions
-            {
-                MaxDegreeOfParallelism = executionPolicy.MaximumConcurrentAiCalls,
-                CancellationToken = cancellationToken
-            },
-            async (workItem, itemCancellationToken) =>
-            {
-                workItem.AiResult = await moderationAiClient.ModerateAsync(
-                    new AiModerationRequest(
-                        principal.TenantId,
-                        principal.ApplicationId,
-                        workItem.Request.Content,
-                        workItem.Request.Language),
-                    itemCancellationToken);
-            });
-
-        foreach (var workItem in workItems)
-        {
-            var moderationItem = workItem.Entity;
-            var aiResult = workItem.AiResult;
-            var evaluation = aiResult is null
-                ? workItem.RuleEvaluation
-                : AiModerationMappings.ToEvaluation(aiResult, workItem.RuleEvaluation);
-
-            moderationItem.Complete(
-                evaluation.Decision,
-                evaluation.ReviewSource,
-                evaluation.Degraded,
-                evaluation.RiskScore,
-                evaluation.ScoreSource,
-                evaluation.Route,
-                JsonSerializer.Serialize(evaluation.ReasonCodes),
-                JsonSerializer.Serialize(evaluation.Categories),
-                JsonSerializer.Serialize(evaluation.Evidence),
-                DateTimeOffset.UtcNow,
-                aiResult?.ConfigurationRevision,
-                aiResult?.ProviderRequestId,
-                aiResult?.InputTokens,
-                aiResult?.OutputTokens,
-                aiResult?.FailureCode);
-            moderationRequest.AddItem(moderationItem);
-            await moderationStore.AddItemAsync(moderationItem, cancellationToken);
-        }
-
-        moderationRequest.Complete(DateTimeOffset.UtcNow);
-        await moderationStore.SaveChangesAsync(cancellationToken);
-
-        return ModerationMappings.ToResponse(moderationRequest);
     }
 
-    private static BatchModerationResponse ResolveReplay(
+    private async Task<BatchModerationResponse> ResolveReplayAsync(
         ModerationRequest existing,
-        string requestFingerprint)
+        string requestFingerprint,
+        ApiKeyPrincipalData principal,
+        int requestedItemCount,
+        string replayOutcome,
+        Stopwatch requestStopwatch,
+        CancellationToken cancellationToken)
     {
-        if (!string.Equals(
-                existing.RequestFingerprint,
-                requestFingerprint,
-                StringComparison.Ordinal))
+        if (!string.Equals(existing.RequestFingerprint, requestFingerprint, StringComparison.Ordinal))
         {
+            await RecordSubmissionFactAsync(
+                existing,
+                principal,
+                requestedItemCount,
+                "conflict",
+                HttpConflictStatus,
+                requestStopwatch,
+                "conflict",
+                cancellationToken);
             throw new RequestConflictException("相同幂等键已用于不同的审核请求。");
         }
 
-        if (existing.ProcessingStatus is ModerationProcessingStatus.Completed or
-            ModerationProcessingStatus.CompletedWithErrors)
+        await RecordSubmissionFactAsync(
+            existing,
+            principal,
+            existing.Items.Count,
+            replayOutcome,
+            IsTerminal(existing.ProcessingStatus) ? HttpOkStatus : HttpAcceptedStatus,
+            requestStopwatch,
+            "replay",
+            cancellationToken);
+
+        return ModerationMappings.ToResponse(existing);
+    }
+
+    private static bool IsTerminal(ModerationProcessingStatus status)
+    {
+        return status is ModerationProcessingStatus.Completed or
+            ModerationProcessingStatus.CompletedWithErrors or
+            ModerationProcessingStatus.Failed or
+            ModerationProcessingStatus.Cancelled;
+    }
+
+    private async Task RecordSubmissionFactAsync(
+        ModerationRequest request,
+        ApiKeyPrincipalData principal,
+        int itemCount,
+        string idempotencyOutcome,
+        int statusCode,
+        Stopwatch? requestStopwatch,
+        string eventAction,
+        CancellationToken cancellationToken)
+    {
+        var occurredAt = DateTimeOffset.UtcNow;
+        await operationalFactService.RecordApiRequestAsync(
+            new ApiRequestMeasurement(
+                request.TenantId,
+                request.ApplicationId,
+                principal.KeyId,
+                request.Id,
+                "/api/v1/moderation/batches",
+                "authenticated",
+                idempotencyOutcome,
+                statusCode,
+                itemCount,
+                requestStopwatch is null
+                    ? null
+                    : Math.Max(0, requestStopwatch.ElapsedMilliseconds),
+                occurredAt),
+            cancellationToken);
+        if (eventAction == "accepted")
         {
-            return ModerationMappings.ToResponse(existing);
+            var payload = OperationalFactPayloads.Moderation(
+                request,
+                eventAction,
+                itemCount,
+                0,
+                0);
+            await operationalFactService.EnqueueAsync(
+                new OutboxMessage(
+                    "moderation.accepted",
+                    "moderation_request",
+                    request.Id,
+                    request.TenantId,
+                    request.ApplicationId,
+                    payload,
+                    occurredAt),
+                cancellationToken);
         }
 
-        throw new RequestConflictException("相同幂等键的审核请求仍在处理中，请稍后重试。");
+        await moderationStore.SaveChangesAsync(cancellationToken);
     }
 
     private sealed class ModerationWorkItem(
-        BatchModerationItemRequest request,
         ModerationItem entity,
-        RuleEvaluation ruleEvaluation)
+        string content,
+        RuleEvaluation ruleEvaluation,
+        RuleNormalizationOptions normalizationOptions)
     {
-        public BatchModerationItemRequest Request { get; } = request;
-
         public ModerationItem Entity { get; } = entity;
+
+        public string Content { get; } = content;
 
         public RuleEvaluation RuleEvaluation { get; } = ruleEvaluation;
 
+        public RuleNormalizationOptions NormalizationOptions { get; } = normalizationOptions;
+
         public AiModerationResult? AiResult { get; set; }
-    }
 
-    public async Task<BatchModerationResponse> GetBatchAsync(
-        Guid requestId,
-        ApiKeyPrincipalData principal,
-        CancellationToken cancellationToken)
-    {
-        var moderationRequest = await moderationStore.GetByIdAsync(
-            principal.ApplicationId,
-            requestId,
-            cancellationToken);
+        public DateTimeOffset? AiStartedAt { get; set; }
 
-        if (moderationRequest is null)
-        {
-            throw new ResourceNotFoundException("审核批次不存在。");
-        }
-
-        return ModerationMappings.ToResponse(moderationRequest);
+        public DateTimeOffset? AiCompletedAt { get; set; }
     }
 }

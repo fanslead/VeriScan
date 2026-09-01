@@ -5,7 +5,11 @@ namespace VeriScan.Application.Services;
 
 internal static class AiModerationMappings
 {
-    public static RuleEvaluation ToEvaluation(AiModerationResult result, RuleEvaluation ruleFallback)
+    public static RuleEvaluation ToEvaluation(
+        AiModerationResult result,
+        RuleEvaluation ruleFallback,
+        string content,
+        RuleNormalizationOptions normalizationOptions)
     {
         if (result.Outcome != AiModerationOutcome.Succeeded || result.Label is null)
         {
@@ -21,6 +25,11 @@ internal static class AiModerationMappings
         var categories = result.Categories
             .Select(category => new RuleCategory(category.Code, null))
             .ToArray();
+        var aiEvidence = result.Evidence
+            .Select(quote => TryLocateEvidence(quote, content, normalizationOptions))
+            .Where(evidence => evidence is not null)
+            .Cast<RuleEvidence>()
+            .ToArray();
         return new RuleEvaluation(
             decision,
             false,
@@ -31,7 +40,57 @@ internal static class AiModerationMappings
             $"external_ai:{result.ConfigurationRevision}",
             result.ReasonCodes,
             categories,
-            result.Evidence);
+            result.Evidence)
+        {
+            EvidenceDetails = ruleFallback.EvidenceDetails.Concat(aiEvidence).ToArray()
+        };
+    }
+
+    private static RuleEvidence? TryLocateEvidence(
+        string quote,
+        string content,
+        RuleNormalizationOptions normalizationOptions)
+    {
+        if (string.IsNullOrWhiteSpace(quote))
+        {
+            return null;
+        }
+
+        var normalizedContent = RuleTextNormalizer.Normalize(content, normalizationOptions);
+        var normalizedQuote = RuleTextNormalizer.NormalizeValue(quote, normalizationOptions);
+        if (normalizedQuote.Length == 0)
+        {
+            return null;
+        }
+
+        var normalizedStart = normalizedContent.Value.IndexOf(
+            normalizedQuote,
+            StringComparison.Ordinal);
+        if (normalizedStart < 0 ||
+            normalizedStart + normalizedQuote.Length > normalizedContent.Spans.Count)
+        {
+            return null;
+        }
+
+        var first = normalizedContent.Spans[normalizedStart];
+        var last = normalizedContent.Spans[normalizedStart + normalizedQuote.Length - 1];
+        var originalStart = first.OriginalStart;
+        var originalEnd = last.OriginalStart + last.OriginalLength;
+        if (originalStart < 0 || originalEnd > content.Length || originalEnd <= originalStart)
+        {
+            return null;
+        }
+
+        return new RuleEvidence(
+            string.Empty,
+            "ai",
+            string.Empty,
+            RuleAction.MonitorOnly,
+            content.Substring(originalStart, originalEnd - originalStart),
+            originalStart,
+            originalEnd - originalStart,
+            normalizedStart,
+            normalizedQuote.Length);
     }
 
     private static RuleEvaluation ToDegradedReview(

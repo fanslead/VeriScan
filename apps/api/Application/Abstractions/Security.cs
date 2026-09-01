@@ -45,5 +45,12 @@ public interface IApiKeyPolicy
 
 public interface IContentHashService
 {
+    string KeyVersion { get; }
+
     string Compute(string content);
+}
+
+public interface IIdempotencyDigestService
+{
+    string Compute(string value);
 }

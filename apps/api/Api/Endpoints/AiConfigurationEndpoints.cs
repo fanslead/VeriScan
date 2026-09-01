@@ -10,7 +10,7 @@ public static class AiConfigurationEndpoints
     {
         var group = endpoints.MapGroup("/api/admin/v1/ai/configurations")
             .WithTags("AI configurations")
-            .RequireAuthorization(AdminJwtOptions.Policy);
+            .RequireAuthorization(AdminJwtOptions.Policy, AdminPolicies.Viewer);
 
         group.MapGet("", ListAsync)
             .WithName("ListAiConfigurations")
@@ -24,6 +24,7 @@ public static class AiConfigurationEndpoints
             .ProducesProblem(StatusCodes.Status404NotFound);
 
         group.MapPost("", CreateAsync)
+            .RequireAuthorization(AdminPolicies.AiConfigEditor)
             .WithName("CreateAiConfiguration")
             .WithSummary("创建 AI 配置草稿")
             .WithDescription("API 密钥为只写字段，服务端加密保存，任何读取接口均不返回明文或密文。")
@@ -31,6 +32,7 @@ public static class AiConfigurationEndpoints
             .ProducesProblem(StatusCodes.Status400BadRequest);
 
         group.MapPut("/{configurationId:guid}", UpdateAsync)
+            .RequireAuthorization(AdminPolicies.AiConfigEditor)
             .WithName("UpdateAiConfiguration")
             .WithSummary("更新 AI 配置草稿")
             .Produces<AiConfigurationResponse>(StatusCodes.Status200OK)
@@ -38,24 +40,28 @@ public static class AiConfigurationEndpoints
             .ProducesProblem(StatusCodes.Status409Conflict);
 
         group.MapPost("/{configurationId:guid}/revisions", CreateRevisionAsync)
+            .RequireAuthorization(AdminPolicies.AiConfigEditor)
             .WithName("CreateAiConfigurationRevision")
             .WithSummary("基于现有版本创建新草稿")
             .Produces<AiConfigurationResponse>(StatusCodes.Status201Created)
             .ProducesProblem(StatusCodes.Status404NotFound);
 
         group.MapPost("/{configurationId:guid}/test", TestAsync)
+            .RequireAuthorization(AdminPolicies.AiConfigEditor)
             .WithName("TestAiConfiguration")
             .WithSummary("使用合成文本测试 AI 配置")
             .Produces<AiConfigurationTestResponse>(StatusCodes.Status200OK)
             .ProducesProblem(StatusCodes.Status409Conflict);
 
         group.MapPost("/{configurationId:guid}/publish", PublishAsync)
+            .RequireAuthorization(AdminPolicies.Publisher)
             .WithName("PublishAiConfiguration")
             .WithSummary("发布不可变 AI 配置")
             .Produces<AiConfigurationResponse>(StatusCodes.Status200OK)
             .ProducesProblem(StatusCodes.Status409Conflict);
 
         group.MapPost("/{configurationId:guid}/activate", ActivateAsync)
+            .RequireAuthorization(AdminPolicies.Publisher)
             .WithName("ActivateAiConfiguration")
             .WithSummary("激活已发布 AI 配置")
             .WithDescription("激活旧版本可执行回滚；同一时刻仅一个配置全局生效。")
@@ -63,6 +69,7 @@ public static class AiConfigurationEndpoints
             .ProducesProblem(StatusCodes.Status409Conflict);
 
         group.MapPost("/{configurationId:guid}/archive", ArchiveAsync)
+            .RequireAuthorization(AdminPolicies.Publisher)
             .WithName("ArchiveAiConfiguration")
             .WithSummary("归档 AI 配置")
             .Produces<AiConfigurationResponse>(StatusCodes.Status200OK);

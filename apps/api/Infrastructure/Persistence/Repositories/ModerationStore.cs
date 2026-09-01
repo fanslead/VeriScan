@@ -9,9 +9,14 @@ public sealed class ModerationStore(VeriScanDbContext dbContext) : IModerationSt
 {
     public async Task<bool> TryReserveAsync(
         ModerationRequest request,
+        ModerationJob? job,
         CancellationToken cancellationToken)
     {
         await dbContext.ModerationRequests.AddAsync(request, cancellationToken);
+        if (job is not null)
+        {
+            await dbContext.ModerationJobs.AddAsync(job, cancellationToken);
+        }
         try
         {
             await dbContext.SaveChangesAsync(cancellationToken);
@@ -49,6 +54,15 @@ public sealed class ModerationStore(VeriScanDbContext dbContext) : IModerationSt
                 request => request.ApplicationId == applicationId &&
                            request.IdempotencyKeyDigest == idempotencyKeyDigest,
                 cancellationToken);
+    }
+
+    public Task<ModerationRequest?> GetForProcessingAsync(
+        Guid requestId,
+        CancellationToken cancellationToken)
+    {
+        return dbContext.ModerationRequests
+            .Include(request => request.Items)
+            .SingleOrDefaultAsync(request => request.Id == requestId, cancellationToken);
     }
 
     public Task AddItemAsync(ModerationItem item, CancellationToken cancellationToken)

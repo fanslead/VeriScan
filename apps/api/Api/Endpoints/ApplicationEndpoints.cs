@@ -10,7 +10,7 @@ public static class ApplicationEndpoints
     {
         var group = endpoints.MapGroup("/api/admin/v1/applications")
             .WithTags("Applications")
-            .RequireAuthorization(AdminJwtOptions.Policy);
+            .RequireAuthorization(AdminJwtOptions.Policy, AdminPolicies.Viewer);
 
         group.MapPost("", async (
                 CreateApplicationRequest request,
@@ -20,6 +20,7 @@ public static class ApplicationEndpoints
                 var response = await service.CreateAsync(request, cancellationToken);
                 return TypedResults.Created($"/api/admin/v1/applications/{response.Id}", response);
             })
+            .RequireAuthorization(AdminPolicies.Operator)
             .WithName("CreateApplication")
             .WithSummary("创建应用")
             .WithDescription("创建一个用于审核调用、配额和统计归属的应用。")
@@ -62,6 +63,7 @@ public static class ApplicationEndpoints
                 var response = await service.UpdateAsync(applicationId, request, cancellationToken);
                 return TypedResults.Ok(response);
             })
+            .RequireAuthorization(AdminPolicies.Operator)
             .WithName("UpdateApplication")
             .WithSummary("更新应用")
             .WithDescription("更新应用名称或生命周期状态。")
@@ -78,6 +80,7 @@ public static class ApplicationEndpoints
                 var response = await service.BindRuleSetAsync(applicationId, request, cancellationToken);
                 return TypedResults.Ok(response);
             })
+            .RequireAuthorization(AdminPolicies.RuleEditor)
             .WithName("BindApplicationRuleSet")
             .WithSummary("切换应用规则集版本")
             .WithDescription("只能绑定已发布版本；切换后新请求立即使用新版本，历史请求保留原版本。")

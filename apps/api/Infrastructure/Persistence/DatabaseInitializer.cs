@@ -35,7 +35,7 @@ public sealed class DatabaseInitializer(VeriScanDbContext dbContext)
                 new WordRule(ruleSet.Id, "明鉴", WordRuleType.White, "product", 0.1m),
                 new WordRule(ruleSet.Id, "veriscan", WordRuleType.White, "product", 0.1m)
             ]);
-        var seedChecksum = RuleSetPolicyValidator.ComputeChecksum(ruleSet.Name, ruleSet.Rules);
+        var seedChecksum = RuleSetPolicyValidator.ComputeChecksum(ruleSet);
         ruleSet.RecordSuccessfulValidation(seedChecksum, DateTimeOffset.UtcNow);
         ruleSet.Publish(seedChecksum, DateTimeOffset.UtcNow);
         dbContext.RuleSetVersions.Add(ruleSet);

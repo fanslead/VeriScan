@@ -9,7 +9,8 @@ internal static class AdminReadMappings
 {
     public static AdminOverviewResponse ToOverviewResponse(
         AdminOverviewReadData data,
-        AdminOverviewReadData previous)
+        AdminOverviewReadData previous,
+        IModerationContentProtector contentProtector)
     {
         var total = data.TodayItems;
         var rejectRate = CalculateRate(data.RejectCount, total);
@@ -26,7 +27,8 @@ internal static class AdminReadMappings
             reviewRate,
             data.P95LatencyMs,
             data.Trend.Select(ToTrendPoint).ToArray(),
-            data.RecentRecords.Select(ToResponse).ToArray(),
+            data.RecentRecords.Select(item =>
+                ToResponse(item, contentProtector.Unprotect(item.Content))).ToArray(),
             data.DataThrough,
             CalculatePercentDelta(data.TodayRequests, previous.TodayRequests),
             CalculatePointDelta(rejectRate, previousRejectRate),
@@ -37,20 +39,24 @@ internal static class AdminReadMappings
     public static ModerationRecordPageResponse ToPageResponse(
         AdminModerationRecordPageReadData data,
         int page,
-        int pageSize)
+        int pageSize,
+        IModerationContentProtector contentProtector)
     {
         return new ModerationRecordPageResponse(
-            data.Items.Select(ToResponse).ToArray(),
+            data.Items.Select(item =>
+                ToResponse(item, contentProtector.Unprotect(item.Content))).ToArray(),
             data.Total,
             page,
             pageSize);
     }
 
-    public static ModerationRecordResponse ToResponse(AdminModerationRecordReadData data)
+    public static ModerationRecordResponse ToResponse(
+        AdminModerationRecordReadData data,
+        string plaintextContent)
     {
         var reasonCodes = DeserializeReasonCodes(data.ReasonCodesJson);
         var categories = DeserializeCategories(data.CategoriesJson);
-        var evidence = DeserializeReasonCodes(data.EvidenceJson);
+        var evidence = DeserializeEvidence(data.EvidenceJson);
         var decision = ParseDecision(data.Decision);
         int? latency = data.MachineCompletedAt.HasValue
             ? Math.Max(0, (int)Math.Round(
@@ -63,7 +69,7 @@ internal static class AdminReadMappings
             data.RequestId,
             data.ApplicationId,
             data.ApplicationName,
-            CreatePreview(data.Content),
+            CreatePreview(plaintextContent),
             data.ContentHash,
             decision,
             data.RiskScore,
@@ -139,6 +145,40 @@ internal static class AdminReadMappings
         if (string.IsNullOrWhiteSpace(value))
         {
             return [];
+        }
+
+        try
+        {
+            return JsonSerializer.Deserialize<string[]>(value) ?? [];
+        }
+        catch (JsonException)
+        {
+            return [];
+        }
+    }
+
+    private static string[] DeserializeEvidence(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return [];
+        }
+
+        try
+        {
+            var structured = JsonSerializer.Deserialize<RuleEvidence[]>(value);
+            if (structured is not null)
+            {
+                return structured
+                    .Select(item => item.Quote)
+                    .Where(quote => !string.IsNullOrWhiteSpace(quote))
+                    .Distinct(StringComparer.Ordinal)
+                    .ToArray();
+            }
+        }
+        catch (JsonException)
+        {
+            // 兼容历史记录中的字符串证据数组。
         }
 
         try

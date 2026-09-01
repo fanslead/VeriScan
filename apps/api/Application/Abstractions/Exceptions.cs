@@ -24,3 +24,6 @@ public sealed class RequestValidationException(string message)
 
 public sealed class UnsupportedOperationException(string message)
     : ApplicationBaseException("operation_not_supported", message);
+
+public sealed class RequestTimeoutException(string message)
+    : ApplicationBaseException("request_timeout", message);

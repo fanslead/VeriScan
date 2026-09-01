@@ -17,7 +17,9 @@ RUN dotnet publish apps/api/Api/Api.csproj \
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0-alpine AS runtime
 WORKDIR /app
-RUN apk add --no-cache krb5-libs
+RUN apk add --no-cache krb5-libs \
+    && mkdir -p /var/lib/veriscan/keys \
+    && chown -R $APP_UID:$APP_UID /var/lib/veriscan
 ENV ASPNETCORE_HTTP_PORTS=8080 \
     DOTNET_EnableDiagnostics=0
 COPY --from=build --chown=$APP_UID:$APP_UID /out/ ./

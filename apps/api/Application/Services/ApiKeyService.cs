@@ -27,7 +27,8 @@ public sealed class ApiKeyService(
     IApiKeyStore apiKeyStore,
     IApiKeyMaterialGenerator materialGenerator,
     IApiKeyPolicy apiKeyPolicy,
-    IApiKeyCacheInvalidator cacheInvalidator) : IApiKeyService
+    IApiKeyCacheInvalidator cacheInvalidator,
+    IOperationalFactService operationalFactService) : IApiKeyService
 {
     private static readonly StringComparer ScopeComparer = StringComparer.Ordinal;
 
@@ -78,7 +79,35 @@ public sealed class ApiKeyService(
         var key = await apiKeyStore.GetByIdAsync(applicationId, keyId, cancellationToken)
             ?? throw new ResourceNotFoundException("API Key 不存在。");
 
-        key.Revoke(DateTimeOffset.UtcNow);
+        var beforeJson = OperationalFactPayloads.ApiKey(key, "before_revoke");
+        var revokedAt = DateTimeOffset.UtcNow;
+        key.Revoke(revokedAt);
+        var afterJson = OperationalFactPayloads.ApiKey(key, "revoked");
+        await operationalFactService.RecordAuditAsync(
+            new AuditEntry(
+                key.TenantId,
+                key.ApplicationId,
+                key.Id,
+                "admin",
+                null,
+                "api_key.revoked",
+                "api_key",
+                key.Id.ToString(),
+                beforeJson,
+                afterJson,
+                null,
+                revokedAt),
+            cancellationToken);
+        await operationalFactService.EnqueueAsync(
+            new OutboxMessage(
+                "api_key.revoked",
+                "api_key",
+                key.Id,
+                key.TenantId,
+                key.ApplicationId,
+                afterJson,
+                revokedAt),
+            cancellationToken);
         await apiKeyStore.SaveChangesAsync(cancellationToken);
         await cacheInvalidator.InvalidateAsync(key.PublicKeyId, cancellationToken);
     }
@@ -148,12 +177,71 @@ public sealed class ApiKeyService(
             application.EnvironmentName,
             expiresAt);
 
+        var keyToRevokeBeforeJson = keyToRevoke is null
+            ? null
+            : OperationalFactPayloads.ApiKey(keyToRevoke, "before_rotate_revoke");
         if (keyToRevoke is not null)
         {
             keyToRevoke.Revoke(now);
         }
 
         await apiKeyStore.AddAsync(key, cancellationToken);
+        if (keyToRevoke is not null)
+        {
+            var revokedJson = OperationalFactPayloads.ApiKey(keyToRevoke, "rotated_revoke");
+            await operationalFactService.RecordAuditAsync(
+                new AuditEntry(
+                    keyToRevoke.TenantId,
+                    keyToRevoke.ApplicationId,
+                    keyToRevoke.Id,
+                    "admin",
+                    null,
+                    "api_key.revoked_for_rotation",
+                    "api_key",
+                    keyToRevoke.Id.ToString(),
+                    keyToRevokeBeforeJson,
+                    revokedJson,
+                    null,
+                    now),
+                cancellationToken);
+            await operationalFactService.EnqueueAsync(
+                new OutboxMessage(
+                    "api_key.revoked_for_rotation",
+                    "api_key",
+                    keyToRevoke.Id,
+                    keyToRevoke.TenantId,
+                    keyToRevoke.ApplicationId,
+                    revokedJson,
+                    now),
+                cancellationToken);
+        }
+
+        var createdJson = OperationalFactPayloads.ApiKey(key, "created");
+        await operationalFactService.RecordAuditAsync(
+            new AuditEntry(
+                key.TenantId,
+                key.ApplicationId,
+                key.Id,
+                "admin",
+                null,
+                keyToRevoke is null ? "api_key.created" : "api_key.rotated",
+                "api_key",
+                key.Id.ToString(),
+                null,
+                createdJson,
+                null,
+                now),
+            cancellationToken);
+        await operationalFactService.EnqueueAsync(
+            new OutboxMessage(
+                keyToRevoke is null ? "api_key.created" : "api_key.rotated",
+                "api_key",
+                key.Id,
+                key.TenantId,
+                key.ApplicationId,
+                createdJson,
+                now),
+            cancellationToken);
         await apiKeyStore.SaveChangesAsync(cancellationToken);
         if (keyToRevoke is not null)
         {

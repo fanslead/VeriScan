@@ -3,6 +3,7 @@ using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.IdentityModel.Tokens;
 using VeriScan.Api.Authentication;
@@ -11,6 +12,9 @@ using VeriScan.Api.Endpoints;
 using VeriScan.Api.Health;
 using VeriScan.Api.Middleware;
 using VeriScan.Api.OpenApi;
+using VeriScan.Api.RateLimiting;
+using VeriScan.Api.Workers;
+using VeriScan.Application.Abstractions;
 using VeriScan.Application.Services;
 using VeriScan.Infrastructure;
 using VeriScan.Infrastructure.Persistence;
@@ -33,6 +37,7 @@ builder.Services.AddHealthChecks()
 builder.Services.AddVeriScanObservability(
     builder.Configuration,
     builder.Environment.ApplicationName);
+builder.Services.AddVeriScanRateLimiting(builder.Configuration);
 builder.Services.AddValidation();
 builder.Services.ConfigureHttpJsonOptions(options =>
 {
@@ -49,6 +54,10 @@ builder.Services.AddAuthentication(options =>
     .AddJwtBearer(AdminJwtOptions.Scheme, options =>
     {
         options.Authority = adminAuthentication.Authority;
+        if (!string.IsNullOrWhiteSpace(adminAuthentication.MetadataAddress))
+        {
+            options.MetadataAddress = adminAuthentication.MetadataAddress;
+        }
         options.Audience = adminAuthentication.Audience;
         options.RequireHttpsMetadata = adminAuthentication.RequireHttpsMetadata;
         options.MapInboundClaims = false;
@@ -81,19 +90,74 @@ builder.Services.AddAuthorization(options =>
             .AddAuthenticationSchemes(ApiKeyAuthenticationDefaults.Scheme)
             .RequireAuthenticatedUser()
             .AddRequirements(new ScopeRequirement("moderation:read")));
+    options.AddPolicy(AdminPolicies.Viewer, policy => policy
+        .AddAuthenticationSchemes(AdminJwtOptions.Scheme)
+        .RequireAuthenticatedUser()
+        .AddRequirements(new AdminPermissionRequirement(
+            AdminPolicies.ViewerRole,
+            AdminPolicies.OperatorRole,
+            AdminPolicies.RuleEditorRole,
+            AdminPolicies.AiConfigEditorRole,
+            AdminPolicies.PublisherRole,
+            AdminPolicies.AuditorRole,
+            AdminPolicies.PlatformAdminRole)));
+    options.AddPolicy(AdminPolicies.Operator, policy => policy
+        .AddAuthenticationSchemes(AdminJwtOptions.Scheme)
+        .RequireAuthenticatedUser()
+        .AddRequirements(new AdminPermissionRequirement(
+            AdminPolicies.OperatorRole,
+            AdminPolicies.PlatformAdminRole)));
+    options.AddPolicy(AdminPolicies.RuleEditor, policy => policy
+        .AddAuthenticationSchemes(AdminJwtOptions.Scheme)
+        .RequireAuthenticatedUser()
+        .AddRequirements(new AdminPermissionRequirement(
+            AdminPolicies.RuleEditorRole,
+            AdminPolicies.PlatformAdminRole)));
+    options.AddPolicy(AdminPolicies.AiConfigEditor, policy => policy
+        .AddAuthenticationSchemes(AdminJwtOptions.Scheme)
+        .RequireAuthenticatedUser()
+        .AddRequirements(new AdminPermissionRequirement(
+            AdminPolicies.AiConfigEditorRole,
+            AdminPolicies.PlatformAdminRole)));
+    options.AddPolicy(AdminPolicies.Publisher, policy => policy
+        .AddAuthenticationSchemes(AdminJwtOptions.Scheme)
+        .RequireAuthenticatedUser()
+        .AddRequirements(new AdminPermissionRequirement(
+            AdminPolicies.PublisherRole,
+            AdminPolicies.PlatformAdminRole)));
+    options.AddPolicy(AdminPolicies.Auditor, policy => policy
+        .AddAuthenticationSchemes(AdminJwtOptions.Scheme)
+        .RequireAuthenticatedUser()
+        .AddRequirements(new AdminPermissionRequirement(
+            AdminPolicies.AuditorRole,
+            AdminPolicies.PlatformAdminRole)));
+    options.AddPolicy(AdminPolicies.PlatformAdmin, policy => policy
+        .AddAuthenticationSchemes(AdminJwtOptions.Scheme)
+        .RequireAuthenticatedUser()
+        .AddRequirements(new AdminPermissionRequirement(AdminPolicies.PlatformAdminRole)));
 });
 builder.Services.AddSingleton<Microsoft.AspNetCore.Authorization.IAuthorizationHandler, ScopeAuthorizationHandler>();
 builder.Services.AddSingleton<Microsoft.AspNetCore.Authorization.IAuthorizationHandler, AdminRoleAuthorizationHandler>();
+builder.Services.AddSingleton<Microsoft.AspNetCore.Authorization.IAuthorizationHandler, AdminPermissionAuthorizationHandler>();
 builder.Services.AddScoped<IApplicationService, ApplicationService>();
 builder.Services.AddScoped<IApiKeyService, ApiKeyService>();
 builder.Services.AddScoped<IModerationService, ModerationService>();
 builder.Services.AddScoped<IAdminReadService, AdminReadService>();
 builder.Services.AddScoped<IApplicationUsageService, ApplicationUsageService>();
+builder.Services.AddScoped<IUsageProjectionService, UsageProjectionService>();
+builder.Services.AddScoped<IOperationalFactService, OperationalFactService>();
+builder.Services.AddScoped<IAuditQueryService, AuditQueryService>();
 builder.Services.AddScoped<IAiConfigurationService, AiConfigurationService>();
 builder.Services.AddScoped<IRuleSetService, RuleSetService>();
 builder.Services.AddSingleton<IRuleModerationEngine, RuleModerationEngine>();
+builder.Services.AddOptions<OutboxWorkerOptions>()
+    .Bind(builder.Configuration.GetSection(OutboxWorkerOptions.SectionName))
+    .ValidateDataAnnotations()
+    .ValidateOnStart();
 builder.Services.AddVeriScanInfrastructure(builder.Configuration);
 builder.Services.AddVeriScanExternalAi(builder.Configuration);
+builder.Services.AddHostedService<ModerationJobWorker>();
+builder.Services.AddHostedService<OutboxWorker>();
 
 var app = builder.Build();
 
@@ -101,7 +165,10 @@ app.UseExceptionHandler();
 app.UseRouting();
 app.UseVeriScanRequestTelemetry();
 app.UseStatusCodePages();
+app.UseVeriScanIngressConcurrency();
 app.UseAuthentication();
+app.UseVeriScanRateLimitHeaders();
+app.UseRateLimiter();
 app.UseAuthorization();
 
 var migrateOnly = args.Contains("--migrate", StringComparer.Ordinal);
@@ -151,6 +218,7 @@ app.MapApiKeyEndpoints();
 app.MapModerationEndpoints();
 app.MapAdminReadEndpoints();
 app.MapApplicationUsageEndpoints();
+app.MapAuditEventEndpoints();
 app.MapAiConfigurationEndpoints();
 app.MapRuleSetEndpoints();
 

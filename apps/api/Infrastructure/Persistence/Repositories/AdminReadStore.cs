@@ -136,7 +136,6 @@ public sealed partial class AdminReadStore(VeriScanDbContext dbContext) : IAdmin
         {
             query = query.Where(item =>
                 item.ClientItemId.Contains(keyword) ||
-                item.Content.Contains(keyword) ||
                 item.ContentHash.Contains(keyword));
         }
 

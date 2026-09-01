@@ -17,7 +17,9 @@ public interface IAdminReadService
         CancellationToken cancellationToken);
 }
 
-public sealed class AdminReadService(IAdminReadStore adminReadStore) : IAdminReadService
+public sealed class AdminReadService(
+    IAdminReadStore adminReadStore,
+    IModerationContentProtector contentProtector) : IAdminReadService
 {
     public async Task<AdminOverviewResponse> GetOverviewAsync(CancellationToken cancellationToken)
     {
@@ -28,7 +30,7 @@ public sealed class AdminReadService(IAdminReadStore adminReadStore) : IAdminRea
             from.AddDays(-1),
             through.AddDays(-1),
             cancellationToken);
-        return AdminReadMappings.ToOverviewResponse(data, previous);
+        return AdminReadMappings.ToOverviewResponse(data, previous, contentProtector);
     }
 
     public async Task<ModerationRecordPageResponse> ListRecordsAsync(
@@ -45,7 +47,11 @@ public sealed class AdminReadService(IAdminReadStore adminReadStore) : IAdminRea
             normalizedQuery.PageSize,
             cancellationToken);
 
-        return AdminReadMappings.ToPageResponse(data, normalizedQuery.Page, normalizedQuery.PageSize);
+        return AdminReadMappings.ToPageResponse(
+            data,
+            normalizedQuery.Page,
+            normalizedQuery.PageSize,
+            contentProtector);
     }
 
     public async Task<ModerationRecordResponse> GetRecordAsync(
@@ -54,6 +60,6 @@ public sealed class AdminReadService(IAdminReadStore adminReadStore) : IAdminRea
     {
         var data = await adminReadStore.GetRecordAsync(recordId, cancellationToken)
             ?? throw new ResourceNotFoundException("审核记录不存在。");
-        return AdminReadMappings.ToResponse(data);
+        return AdminReadMappings.ToResponse(data, contentProtector.Unprotect(data.Content));
     }
 }

@@ -3,8 +3,11 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using VeriScan.Application.Contracts;
 using VeriScan.Domain.Entities;
+using VeriScan.Infrastructure.Persistence;
 
 namespace VeriScan.Api.Tests;
 
@@ -54,6 +57,17 @@ public sealed class AdminReadApiTests : IClassFixture<ApiTestFactory>
             new { id = "review-1", content = "请加微信联系", contentType = "plain_text" },
             new { id = "review-2", content = "普通内容", contentType = "plain_text" }
         });
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var dbContext = scope.ServiceProvider.GetRequiredService<VeriScanDbContext>();
+            var storedContent = await dbContext.ModerationItems
+                .AsNoTracking()
+                .Where(item => item.RequestId == batch.RequestId)
+                .Select(item => item.Content)
+                .ToArrayAsync();
+            Assert.All(storedContent, content => Assert.StartsWith("dp:v1:", content));
+            Assert.DoesNotContain(storedContent, content => content.Contains("赌博", StringComparison.Ordinal));
+        }
 
         using var listRequest = new HttpRequestMessage(
             HttpMethod.Get,
@@ -77,7 +91,6 @@ public sealed class AdminReadApiTests : IClassFixture<ApiTestFactory>
         Assert.StartsWith("ruleset@", record.PolicyVersion, StringComparison.Ordinal);
         Assert.NotEmpty(record.ContentHash);
         Assert.NotEmpty(record.ReasonCodes);
-        Assert.Empty(record.Evidence);
         Assert.Contains(record.ContentPreview, ReviewPreviews);
 
         using var detailRequest = new HttpRequestMessage(
@@ -93,7 +106,7 @@ public sealed class AdminReadApiTests : IClassFixture<ApiTestFactory>
 
         using var keywordRequest = new HttpRequestMessage(
             HttpMethod.Get,
-            $"/api/admin/v1/moderation-records?applicationId={application.Id}&keyword=%E8%B5%8C%E5%8D%9A&pageSize=10");
+            $"/api/admin/v1/moderation-records?applicationId={application.Id}&keyword=reject-1&pageSize=10");
         AddAdminAuthorization(keywordRequest);
         var keywordResponse = await client.SendAsync(keywordRequest);
         Assert.Equal(HttpStatusCode.OK, keywordResponse.StatusCode);
@@ -101,6 +114,19 @@ public sealed class AdminReadApiTests : IClassFixture<ApiTestFactory>
         Assert.NotNull(keywordPage);
         Assert.Single(keywordPage.Items);
         Assert.Equal(ModerationDecision.Reject, keywordPage.Items[0].Decision);
+
+        using var evidenceRequest = new HttpRequestMessage(
+            HttpMethod.Get,
+            $"/api/admin/v1/moderation-records?applicationId={application.Id}&status=review&keyword=review-1&page=1&pageSize=1");
+        AddAdminAuthorization(evidenceRequest);
+        var evidenceResponse = await client.SendAsync(evidenceRequest);
+        Assert.Equal(HttpStatusCode.OK, evidenceResponse.StatusCode);
+        var evidencePage = await evidenceResponse.Content.ReadFromJsonAsync<ModerationRecordPageResponse>(JsonOptions);
+        Assert.NotNull(evidencePage);
+        Assert.Equal(1, evidencePage.Total);
+        var evidenceRecord = Assert.Single(evidencePage.Items);
+        Assert.Equal("请加微信联系", evidenceRecord.ContentPreview);
+        Assert.Contains("加微信", evidenceRecord.Evidence);
 
         using var invalidPageRequest = new HttpRequestMessage(
             HttpMethod.Get,

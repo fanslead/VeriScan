@@ -13,11 +13,31 @@ public sealed class VeriScanDbContext(DbContextOptions<VeriScanDbContext> option
 
     public DbSet<ModerationItem> ModerationItems => Set<ModerationItem>();
 
+    public DbSet<ModerationJob> ModerationJobs => Set<ModerationJob>();
+
     public DbSet<WordRule> WordRules => Set<WordRule>();
+
+    public DbSet<RegexRule> RegexRules => Set<RegexRule>();
+
+    public DbSet<CombinationRule> CombinationRules => Set<CombinationRule>();
 
     public DbSet<RuleSetVersion> RuleSetVersions => Set<RuleSetVersion>();
 
     public DbSet<AiModelConfiguration> AiModelConfigurations => Set<AiModelConfiguration>();
+
+    public DbSet<AuditEvent> AuditEvents => Set<AuditEvent>();
+
+    public DbSet<OutboxEvent> OutboxEvents => Set<OutboxEvent>();
+
+    public DbSet<ApiRequestEvent> ApiRequestEvents => Set<ApiRequestEvent>();
+
+    public DbSet<AiInvocation> AiInvocations => Set<AiInvocation>();
+
+    public DbSet<UsageHourly> UsageHourly => Set<UsageHourly>();
+
+    public DbSet<UsageDaily> UsageDaily => Set<UsageDaily>();
+
+    public DbSet<UsageConsumedEvent> UsageConsumedEvents => Set<UsageConsumedEvent>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

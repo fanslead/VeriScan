@@ -6,11 +6,14 @@ public sealed class RuleSetVersion
     {
     }
 
-    public RuleSetVersion(string name)
+    public RuleSetVersion(
+        string name,
+        RuleNormalizationProfile normalizationProfile = RuleNormalizationProfile.Default)
     {
         Id = Guid.CreateVersion7();
         PublicRevisionId = $"ruleset@{Id:N}";
         Name = name;
+        NormalizationProfile = normalizationProfile;
         Status = RuleSetStatus.Draft;
         CreatedAt = DateTimeOffset.UtcNow;
         UpdatedAt = CreatedAt;
@@ -21,6 +24,8 @@ public sealed class RuleSetVersion
     public string PublicRevisionId { get; private set; } = string.Empty;
 
     public string Name { get; private set; } = string.Empty;
+
+    public RuleNormalizationProfile NormalizationProfile { get; private set; }
 
     public RuleSetStatus Status { get; private set; }
 
@@ -38,13 +43,30 @@ public sealed class RuleSetVersion
 
     public ICollection<WordRule> Rules { get; private set; } = new List<WordRule>();
 
+    public ICollection<RegexRule> RegexRules { get; private set; } = new List<RegexRule>();
+
+    public ICollection<CombinationRule> CombinationRules { get; private set; } = new List<CombinationRule>();
+
     public ICollection<ApplicationEntity> Applications { get; private set; } = new List<ApplicationEntity>();
 
     public void ReplaceDraft(string name, IReadOnlyCollection<WordRule> rules)
     {
+        ReplaceDraft(name, rules, [], [], NormalizationProfile);
+    }
+
+    public void ReplaceDraft(
+        string name,
+        IReadOnlyCollection<WordRule> rules,
+        IReadOnlyCollection<RegexRule> regexRules,
+        IReadOnlyCollection<CombinationRule> combinationRules,
+        RuleNormalizationProfile normalizationProfile = RuleNormalizationProfile.Default)
+    {
         EnsureDraft();
         Name = name;
+        NormalizationProfile = normalizationProfile;
         Rules.Clear();
+        RegexRules.Clear();
+        CombinationRules.Clear();
         foreach (var rule in rules)
         {
             if (rule.RuleSetVersionId != Id)
@@ -53,6 +75,26 @@ public sealed class RuleSetVersion
             }
 
             Rules.Add(rule);
+        }
+
+        foreach (var rule in regexRules)
+        {
+            if (rule.RuleSetVersionId != Id)
+            {
+                throw new InvalidOperationException("正则规则不属于当前规则集版本。");
+            }
+
+            RegexRules.Add(rule);
+        }
+
+        foreach (var rule in combinationRules)
+        {
+            if (rule.RuleSetVersionId != Id)
+            {
+                throw new InvalidOperationException("组合规则不属于当前规则集版本。");
+            }
+
+            CombinationRules.Add(rule);
         }
 
         LastValidatedAt = null;
