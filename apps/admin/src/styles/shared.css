@@ -1,0 +1,211 @@
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 0 !important;
+  border-radius: 5px !important;
+  font-size: 11px !important;
+}
+.status-badge .status-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.status-badge.semi-tag-green {
+  color: var(--teal) !important;
+  background: var(--teal-soft) !important;
+}
+.status-badge.semi-tag-red {
+  color: var(--red) !important;
+  background: var(--red-soft) !important;
+}
+.status-badge.semi-tag-amber {
+  color: var(--amber) !important;
+  background: var(--amber-soft) !important;
+}
+.status-badge.semi-tag-grey {
+  color: var(--slate) !important;
+  background: var(--frost) !important;
+}
+.table-panel .semi-card-body {
+  padding: 0 24px 16px;
+}
+.table-toolbar {
+  display: flex;
+  min-height: 93px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+.table-toolbar .semi-typography-title {
+  margin: 7px 0 0;
+  color: var(--ink);
+  font-size: 17px;
+  font-weight: 650;
+}
+.table-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.table-filters .semi-input-wrapper {
+  width: 222px;
+}
+.table-filters .semi-select {
+  width: 130px;
+}
+.table-filters .semi-select:last-child {
+  width: 118px;
+}
+.semi-input-wrapper,
+.semi-select,
+.semi-datepicker {
+  border-radius: 7px;
+}
+.semi-input-wrapper:focus-within,
+.semi-select-focused {
+  border-color: var(--teal) !important;
+  box-shadow: 0 0 0 2px rgba(18, 124, 114, 0.1) !important;
+}
+.data-table .semi-table-thead {
+  background: transparent;
+}
+.data-table .semi-table-thead > .semi-table-row > .semi-table-row-head {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 500;
+}
+.data-table .semi-table-tbody > .semi-table-row > .semi-table-row-cell {
+  height: 68px;
+  border-color: var(--line);
+  color: var(--graphite);
+  font-size: 12px;
+}
+.data-table .semi-table-tbody > .semi-table-row:hover > .semi-table-row-cell {
+  background: #fbfdfc;
+}
+.table-primary-link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.table-primary-link > span:not(.app-avatar) {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+.table-primary-link strong {
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.table-primary-link small,
+.table-secondary small {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 9px;
+}
+.table-primary-link > svg {
+  margin-left: auto;
+  color: var(--muted);
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+.table-primary-link:hover > svg {
+  opacity: 1;
+}
+.app-avatar,
+.detail-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9px;
+  color: var(--teal);
+  background: var(--teal-soft);
+  font-weight: 700;
+}
+.app-avatar {
+  width: 32px;
+  height: 32px;
+  flex: 0 0 auto;
+  font-size: 13px;
+}
+.table-secondary {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.table-secondary strong {
+  color: var(--graphite);
+  font-size: 12px;
+  font-weight: 500;
+}
+.data-mono,
+.record-id {
+  color: var(--graphite);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+.data-mono--amber {
+  color: var(--amber);
+}
+.table-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.table-actions .semi-button {
+  padding: 0 5px;
+  font-size: 11px;
+}
+.table-muted {
+  color: var(--muted);
+  font-size: 11px;
+}
+.table-skeleton {
+  padding: 20px 0;
+}
+.empty-state,
+.error-state {
+  display: flex;
+  min-height: 280px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 34px;
+  text-align: center;
+}
+.empty-state .semi-empty {
+  margin: 0;
+}
+.empty-state .semi-button {
+  margin-top: 4px;
+}
+.error-state .semi-typography-title {
+  margin: 0;
+  color: var(--ink);
+}
+.error-state .semi-typography {
+  max-width: 310px;
+  text-align: center;
+}
+.page-footnote {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.page-footnote .semi-tag {
+  border: 0;
+  color: var(--slate);
+  background: #eaecf0;
+}

@@ -1,0 +1,133 @@
+.back-link {
+  display: inline-flex;
+  width: fit-content;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  border: 0;
+  color: var(--teal);
+  background: transparent;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+}
+.back-link:hover {
+  color: var(--teal-deep);
+}
+.form-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 290px;
+  align-items: start;
+  gap: 24px;
+  max-width: 960px;
+}
+.form-panel {
+  max-width: 680px;
+}
+.form-panel .semi-card-body {
+  padding: 32px;
+}
+.form-section {
+  margin-bottom: 27px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--line);
+}
+.form-section .semi-typography-title {
+  margin: 7px 0 5px;
+  color: var(--ink);
+  font-size: 18px;
+}
+.form-help {
+  margin: 0;
+  color: var(--slate);
+  font-size: 12px;
+}
+.form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 22px;
+  color: var(--graphite);
+  font-size: 12px;
+  font-weight: 500;
+}
+.form-field > span i {
+  color: var(--red);
+  font-style: normal;
+}
+.form-field .semi-input-wrapper,
+.form-field .semi-select,
+.form-field .semi-datepicker {
+  width: 100%;
+}
+.form-field .semi-input-wrapper input,
+.form-field textarea {
+  font-size: 13px;
+}
+.field-error {
+  color: var(--red);
+  font-size: 11px;
+  font-weight: 400;
+}
+.field-hint,
+.form-hint {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 400;
+}
+.form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 9px;
+  margin-top: 30px;
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
+}
+.inline-error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 7px;
+  color: var(--red);
+  background: var(--red-soft);
+  font-size: 11px;
+}
+.form-aside {
+  padding: 25px;
+  border-top: 2px solid var(--teal);
+  background: var(--ink);
+  color: #e4e7ec;
+}
+.aside-mark {
+  margin-bottom: 22px;
+  color: #6bd1be;
+  font-family: var(--font-mono);
+  font-size: 31px;
+}
+.form-aside .semi-typography-title {
+  margin: 0 0 12px;
+  color: #fff;
+  font-size: 16px;
+}
+.form-aside ul {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 0;
+  padding: 0 0 0 16px;
+  color: #98a2b3;
+  font-size: 11px;
+  line-height: 1.65;
+}
+.aside-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  margin-top: 25px;
+  padding-top: 15px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  color: #b7eadf;
+  font-size: 10px;
+  line-height: 1.6;
+}

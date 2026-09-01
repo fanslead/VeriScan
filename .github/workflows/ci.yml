@@ -1,0 +1,106 @@
+name: VeriScan CI
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: veriscan-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: 后端 restore、build、test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: 拉取代码
+        uses: actions/checkout@v4
+
+      - name: 配置 .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: 缓存 NuGet 包
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj', '**/Directory.Packages.props', 'global.json') }}
+          restore-keys: |
+            ${{ runner.os }}-nuget-
+
+      - name: 还原后端依赖
+        run: dotnet restore VeriScan.slnx
+
+      - name: 校验后端格式
+        run: dotnet format VeriScan.slnx --verify-no-changes --no-restore
+
+      - name: 构建后端
+        run: dotnet build VeriScan.slnx --configuration Release --no-restore
+
+      - name: 运行后端测试
+        run: dotnet test VeriScan.slnx --configuration Release --no-restore --no-build --logger trx --results-directory TestResults
+
+      - name: 上传后端测试结果
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-test-results
+          path: TestResults
+          if-no-files-found: ignore
+
+  frontend:
+    name: 前端 lint、typecheck、test、build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: 拉取代码
+        uses: actions/checkout@v4
+
+      - name: 配置 pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.13.1
+
+      - name: 配置 Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: 安装前端依赖
+        run: pnpm install --frozen-lockfile
+
+      - name: 运行前端 lint
+        run: pnpm lint
+
+      - name: 运行前端类型检查
+        run: pnpm typecheck
+
+      - name: 校验前端格式
+        run: pnpm format:check
+
+      - name: 运行前端测试
+        run: pnpm test
+
+      - name: 构建前端
+        run: pnpm build
+
+  infrastructure:
+    name: Compose 配置校验
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: 拉取代码
+        uses: actions/checkout@v4
+
+      - name: 校验本地依赖编排
+        run: docker compose --env-file infra/.env.example -f infra/compose.yaml config --quiet

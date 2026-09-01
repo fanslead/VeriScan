@@ -1,0 +1,22 @@
+.semi-modal-content {
+  border-radius: 12px;
+}
+.semi-modal-header {
+  color: var(--ink);
+}
+.semi-modal-footer {
+  border-top-color: var(--line);
+}
+.semi-drawer-content {
+  background: var(--paper);
+}
+.semi-drawer-header {
+  border-bottom-color: var(--line);
+}
+.semi-drawer-header-title {
+  color: var(--ink);
+  font-size: 15px;
+}
+.semi-skeleton {
+  border-radius: 5px;
+}
