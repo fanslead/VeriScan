@@ -109,6 +109,8 @@ infra                    PostgreSQL、Redis、Keycloak、容器与可观测性
 
 验收：以本地/测试环境实测数据填写性能基线，不沿用技术方案中的估算值冒充实测结果。
 
+当前落地：已完成 API/管理端非 root 多阶段镜像、同产物一次性迁移入口、liveness/readiness 分离、CI 基础质量门禁、Chromium 桌面/移动端检查和 10,000 条规则的本机进程内基线。完整 HTTP 压测、生产 Provider/OIDC/TLS、备份恢复、故障演练、SBOM/许可证和目标集群发布仍须在部署环境完成，详见 `docs/ACCEPTANCE_REPORT.md`。
+
 ## 4. Git 提交批次
 
 建议按以下顺序形成可回退提交：
@@ -126,15 +128,15 @@ infra                    PostgreSQL、Redis、Keycloak、容器与可观测性
 
 ## 5. 测试矩阵
 
-| 层级 | 核心证据 |
-| --- | --- |
-| Domain | 规则归一化、命中组合、阈值边界、终态映射 |
-| Application | 幂等并发 owner、Key 生命周期、失败不放行、版本冻结 |
-| API | OpenAPI、状态码、Problem Details、Header 鉴权、批量混合结果 |
-| Infrastructure | PostgreSQL 约束、迁移、Outbox、Redis 降级、协议 fixture |
-| Frontend | 表单校验、一次性 Key、错误恢复、路由权限、空/loading 状态 |
-| E2E | 创建应用 → 创建 Key → 调用审核 → 查询记录 → 查看应用统计 |
-| Performance | 规则 P95、入口吞吐、Provider 容量、Token/费用和资源曲线 |
+| 层级           | 核心证据                                                    |
+| -------------- | ----------------------------------------------------------- |
+| Domain         | 规则归一化、命中组合、阈值边界、终态映射                    |
+| Application    | 幂等并发 owner、Key 生命周期、失败不放行、版本冻结          |
+| API            | OpenAPI、状态码、Problem Details、Header 鉴权、批量混合结果 |
+| Infrastructure | PostgreSQL 约束、迁移、Outbox、Redis 降级、协议 fixture     |
+| Frontend       | 表单校验、一次性 Key、错误恢复、路由权限、空/loading 状态   |
+| E2E            | 创建应用 → 创建 Key → 调用审核 → 查询记录 → 查看应用统计    |
+| Performance    | 规则 P95、入口吞吐、Provider 容量、Token/费用和资源曲线     |
 
 ## 6. 暂缓但保留边界
 

@@ -20,13 +20,13 @@ docker compose --env-file infra/.env -f infra/compose.yaml up -d
 
 服务地址：
 
-| 服务 | 本地地址 | 用途 |
-| --- | --- | --- |
-| PostgreSQL | `localhost:5432` | 业务权威数据库 |
-| Redis | `localhost:6379` | 缓存、限流、失效通知 |
-| Keycloak | `http://localhost:8080` | 本地 OIDC/MFA 管理认证 |
+| 服务            | 本地地址                      | 用途                                  |
+| --------------- | ----------------------------- | ------------------------------------- |
+| PostgreSQL      | `localhost:5432`              | 业务权威数据库                        |
+| Redis           | `localhost:6379`              | 缓存、限流、失效通知                  |
+| Keycloak        | `http://localhost:8080`       | 本地 OIDC/MFA 管理认证                |
 | Keycloak 管理台 | `http://localhost:8080/admin` | 使用 `.env` 中的 bootstrap 管理员登录 |
-| 本地 Realm | `veriscan-local` | 管理后台 OIDC 客户端所在 Realm |
+| 本地 Realm      | `veriscan-local`              | 管理后台 OIDC 客户端所在 Realm        |
 
 `veriscan-admin` 是使用 Authorization Code + PKCE 的公开 SPA 客户端，`veriscan-api` 是 API audience。Realm 在管理后台的 access token 中注入 `veriscan-api` audience，API 开发环境也会校验该值，不使用“本地关闭 audience校验”的宽松配置。
 
@@ -55,7 +55,7 @@ docker compose --env-file infra/.env -f infra/compose.yaml down -v
 
 ## 健康检查
 
-Compose 会等待 PostgreSQL 通过健康检查后再启动 Keycloak。PostgreSQL 首次初始化时会通过 `postgres/init/001-create-keycloak-database.sh` 创建独立的 Keycloak 数据库；如果已经存在旧数据卷，需要手动创建该数据库或重新初始化本地卷。Redis 和 Keycloak 也提供健康检查。Keycloak 的就绪探针使用镜像内置 Bash 的 TCP 连接能力请求管理端口 `/health/ready`，不依赖镜像中未保证存在的 curl；该端口只在容器网络内可用。应用自身应继续实现独立的 liveness/readiness 检查，不应把本地 Compose 状态当作生产可用性证明。
+Compose 会等待 PostgreSQL 通过健康检查后再启动 Keycloak。PostgreSQL 首次初始化时会通过 `postgres/init/001-create-keycloak-database.sh` 创建独立的 Keycloak 数据库；如果已经存在旧数据卷，需要手动创建该数据库或重新初始化本地卷。Redis 和 Keycloak 也提供健康检查。Keycloak 的就绪探针使用镜像内置 Bash 的 TCP 连接能力请求管理端口 `/health/ready`，不依赖镜像中未保证存在的 curl；该端口只在容器网络内可用。VeriScan API 的 `/healthz` 只证明进程存活，`/readyz` 会检查 PostgreSQL 连通性和迁移同步状态；负载均衡只能依据 `/readyz` 接流量。上述探针仍不替代生产备份恢复和故障演练。
 
 提交前可以不启动容器，仅校验 Compose 配置。由于密码变量是必填项，使用示例文件校验：
 

@@ -58,6 +58,17 @@ dotnet run --project apps/api/Api
 
 管理后台使用 Vite；本地开发默认地址为 `http://127.0.0.1:5173`。真实模式先将 `apps/admin/.env.example` 复制为 `apps/admin/.env.local`，并在 Keycloak 创建本地用户、授予 `veriscan-admin` 角色。Mock 数据必须通过 `VITE_API_MODE=mock` 显式启用，不会在真实模式或 OIDC 配置缺失时自动降级。
 
+API 提供 `/healthz` 进程存活探针和 `/readyz` 接流量探针；后者会实际检查 PostgreSQL 连通性和待执行迁移。容器镜像从仓库根目录构建：
+
+```bash
+docker build -f apps/api/Dockerfile -t veriscan-api:local .
+docker build -f apps/admin/Dockerfile -t veriscan-admin:local \
+  --build-arg VITE_OIDC_AUTHORITY=https://identity.example/realms/veriscan \
+  --build-arg VITE_OIDC_REDIRECT_URI=https://admin.example/auth/callback .
+```
+
+API 镜像默认启动服务，也可由部署系统覆盖参数，以同一经过验证的产物执行一次性迁移 Job：`dotnet VeriScan.Api.dll --migrate`。生产环境必须通过 Secret/Key 管理注入数据库、Redis、API Key pepper 和 Provider 凭据；不得把值写入镜像或仓库。
+
 常用验证命令：
 
 ```bash
@@ -69,6 +80,8 @@ pnpm --dir apps/admin lint
 pnpm --dir apps/admin typecheck
 pnpm --dir apps/admin build
 pnpm --dir apps/admin format:check
+dotnet run --project tests/performance/RuleEngine.Baseline/RuleEngine.Baseline.csproj \
+  --configuration Release -- 10000 20000
 ```
 
-仓库仍在按 [实施计划](docs/IMPLEMENTATION_PLAN.md) 分阶段建设。生产架构和协议边界以 [技术方案](VeriScan-CMS-%E6%8A%80%E6%9C%AF%E6%96%B9%E6%A1%88-v2.md) 为准。
+仓库仍在按 [实施计划](docs/IMPLEMENTATION_PLAN.md) 分阶段建设。本地已验证能力与生产上线前门禁见 [验收报告](docs/ACCEPTANCE_REPORT.md)；生产架构和协议边界以 [技术方案](VeriScan-CMS-%E6%8A%80%E6%9C%AF%E6%96%B9%E6%A1%88-v2.md) 为准。
