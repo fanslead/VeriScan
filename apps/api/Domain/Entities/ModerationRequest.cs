@@ -11,6 +11,7 @@ public sealed class ModerationRequest
         Guid applicationId,
         Guid createdByApiKeyId,
         string mode,
+        string policyRevision,
         string? idempotencyKeyDigest,
         string? requestFingerprint,
         DateTimeOffset submittedAt)
@@ -20,6 +21,7 @@ public sealed class ModerationRequest
         ApplicationId = applicationId;
         CreatedByApiKeyId = createdByApiKeyId;
         Mode = mode;
+        PolicyRevision = policyRevision;
         IdempotencyKeyDigest = idempotencyKeyDigest;
         RequestFingerprint = requestFingerprint;
         ProcessingStatus = ModerationProcessingStatus.Processing;
@@ -35,6 +37,8 @@ public sealed class ModerationRequest
     public Guid CreatedByApiKeyId { get; private set; }
 
     public string Mode { get; private set; } = string.Empty;
+
+    public string PolicyRevision { get; private set; } = string.Empty;
 
     public string? IdempotencyKeyDigest { get; private set; }
 

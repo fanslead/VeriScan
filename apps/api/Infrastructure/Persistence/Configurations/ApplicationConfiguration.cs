@@ -15,6 +15,7 @@ public sealed class ApplicationConfiguration : IEntityTypeConfiguration<Applicat
         builder.Property(application => application.EnvironmentName).HasMaxLength(16).IsRequired();
         builder.Property(application => application.Status).HasConversion<string>().HasMaxLength(32).IsRequired();
         builder.HasIndex(application => new { application.TenantId, application.PublicId }).IsUnique();
+        builder.HasIndex(application => application.RuleSetVersionId);
         builder.HasMany(application => application.ApiKeys)
             .WithOne(key => key.Application)
             .HasForeignKey(key => key.ApplicationId)

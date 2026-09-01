@@ -58,7 +58,31 @@ public interface IModerationStore
     Task SaveChangesAsync(CancellationToken cancellationToken);
 }
 
-public interface IWordRuleStore
+public interface IRuleSetStore
 {
-    Task<IReadOnlyList<WordRule>> GetEnabledAsync(CancellationToken cancellationToken);
+    Task AddAsync(RuleSetVersion ruleSet, CancellationToken cancellationToken);
+
+    Task<RuleSetVersion?> GetByIdAsync(Guid id, CancellationToken cancellationToken);
+
+    Task<RuleSetVersion?> GetByPublicRevisionIdAsync(
+        string publicRevisionId,
+        CancellationToken cancellationToken);
+
+    Task<RuleSetVersion?> GetLatestPublishedAsync(CancellationToken cancellationToken);
+
+    Task<RuleSetVersion?> GetBoundForApplicationAsync(
+        Guid applicationId,
+        CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<RuleSetVersion>> ListAsync(CancellationToken cancellationToken);
+
+    Task<int> CountBindingsAsync(Guid ruleSetVersionId, CancellationToken cancellationToken);
+
+    Task ReplaceDraftAsync(
+        RuleSetVersion ruleSet,
+        string name,
+        IReadOnlyCollection<WordRule> rules,
+        CancellationToken cancellationToken);
+
+    Task SaveChangesAsync(CancellationToken cancellationToken);
 }

@@ -16,13 +16,16 @@ internal sealed record ModerationRequestIdentity(
         Guid applicationId,
         string? idempotencyKey,
         BatchModerationRequest request,
+        string effectivePolicyId,
         IContentHashService contentHashService)
     {
         var normalizedKey = ValidateKey(idempotencyKey);
         var digest = normalizedKey is null
             ? null
             : contentHashService.Compute($"{applicationId:N}\0{normalizedKey}");
-        return new ModerationRequestIdentity(digest, ComputeFingerprint(request, contentHashService));
+        return new ModerationRequestIdentity(
+            digest,
+            ComputeFingerprint(request, effectivePolicyId, contentHashService));
     }
 
     private static string? ValidateKey(string? idempotencyKey)
@@ -45,11 +48,12 @@ internal sealed record ModerationRequestIdentity(
 
     private static string ComputeFingerprint(
         BatchModerationRequest request,
+        string effectivePolicyId,
         IContentHashService contentHashService)
     {
         var canonical = new StringBuilder(capacity: 256);
         Append(canonical, request.Mode.ToString().ToLowerInvariant());
-        Append(canonical, request.PolicyId ?? string.Empty);
+        Append(canonical, effectivePolicyId);
         canonical.Append(request.Items.Count.ToString(CultureInfo.InvariantCulture)).Append(':');
         foreach (var item in request.Items)
         {

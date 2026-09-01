@@ -69,6 +69,22 @@ public static class ApplicationEndpoints
             .ProducesProblem(StatusCodes.Status400BadRequest)
             .ProducesProblem(StatusCodes.Status404NotFound);
 
+        group.MapPut("/{applicationId:guid}/rule-set", async (
+                Guid applicationId,
+                BindApplicationRuleSetRequest request,
+                IApplicationService service,
+                CancellationToken cancellationToken) =>
+            {
+                var response = await service.BindRuleSetAsync(applicationId, request, cancellationToken);
+                return TypedResults.Ok(response);
+            })
+            .WithName("BindApplicationRuleSet")
+            .WithSummary("切换应用规则集版本")
+            .WithDescription("只能绑定已发布版本；切换后新请求立即使用新版本，历史请求保留原版本。")
+            .Produces<ApplicationResponse>(StatusCodes.Status200OK)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
+
         return endpoints;
     }
 }

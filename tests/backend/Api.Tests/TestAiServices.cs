@@ -43,6 +43,8 @@ internal sealed class TestModerationAiClient : IModerationAiClient
 
     public AiModerationResult Result { get; set; } = NoActiveConfiguration();
 
+    public Func<AiModerationRequest, AiModerationResult>? Handler { get; set; }
+
     public TimeSpan Delay { get; set; }
 
     public int Calls => Volatile.Read(ref calls);
@@ -63,7 +65,7 @@ internal sealed class TestModerationAiClient : IModerationAiClient
                 await Task.Delay(Delay, cancellationToken);
             }
 
-            return Result;
+            return Handler?.Invoke(request) ?? Result;
         }
         finally
         {

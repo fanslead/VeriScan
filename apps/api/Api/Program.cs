@@ -85,6 +85,7 @@ builder.Services.AddScoped<IModerationService, ModerationService>();
 builder.Services.AddScoped<IAdminReadService, AdminReadService>();
 builder.Services.AddScoped<IApplicationUsageService, ApplicationUsageService>();
 builder.Services.AddScoped<IAiConfigurationService, AiConfigurationService>();
+builder.Services.AddScoped<IRuleSetService, RuleSetService>();
 builder.Services.AddSingleton<IRuleModerationEngine, RuleModerationEngine>();
 builder.Services.AddVeriScanInfrastructure(builder.Configuration);
 builder.Services.AddVeriScanExternalAi(builder.Configuration);
@@ -120,6 +121,7 @@ app.MapModerationEndpoints();
 app.MapAdminReadEndpoints();
 app.MapApplicationUsageEndpoints();
 app.MapAiConfigurationEndpoints();
+app.MapRuleSetEndpoints();
 
 app.Run();
 

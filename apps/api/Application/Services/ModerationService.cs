@@ -22,7 +22,7 @@ public interface IModerationService
 
 public sealed class ModerationService(
     IModerationStore moderationStore,
-    IWordRuleStore wordRuleStore,
+    IRuleSetStore ruleSetStore,
     IRuleModerationEngine ruleModerationEngine,
     IModerationAiClient moderationAiClient,
     IContentHashService contentHashService,
@@ -65,10 +65,28 @@ public sealed class ModerationService(
             }
         }
 
+        var ruleSet = await ruleSetStore.GetBoundForApplicationAsync(
+            principal.ApplicationId,
+            cancellationToken);
+        if (ruleSet is null || ruleSet.Status != RuleSetStatus.Published)
+        {
+            throw new RequestConflictException("应用尚未绑定可用的已发布规则集。");
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.PolicyId) &&
+            !string.Equals(
+                request.PolicyId.Trim(),
+                ruleSet.PublicRevisionId,
+                StringComparison.Ordinal))
+        {
+            throw new RequestConflictException("请求策略与应用当前绑定的规则集不一致。");
+        }
+
         var identity = ModerationRequestIdentity.Create(
             principal.ApplicationId,
             idempotencyKey,
             request,
+            ruleSet.PublicRevisionId,
             contentHashService);
         if (identity.IdempotencyKeyDigest is not null)
         {
@@ -88,6 +106,7 @@ public sealed class ModerationService(
             principal.ApplicationId,
             principal.KeyId,
             request.Mode.ToString().ToLowerInvariant(),
+            ruleSet.PublicRevisionId,
             identity.IdempotencyKeyDigest,
             identity.RequestFingerprint,
             submittedAt);
@@ -102,7 +121,10 @@ public sealed class ModerationService(
             return ResolveReplay(replay, identity.RequestFingerprint);
         }
 
-        var rules = await wordRuleStore.GetEnabledAsync(cancellationToken);
+        var rules = ruleSet.Rules
+            .Where(rule => rule.IsEnabled)
+            .OrderByDescending(rule => rule.Weight)
+            .ToArray();
 
         var workItems = request.Items
             .Select(item => new ModerationWorkItem(

@@ -11,8 +11,8 @@ public sealed class RuleModerationEngineTests
         var engine = new RuleModerationEngine();
         var rules = new WordRule[]
         {
-            new("加微信", WordRuleType.Suspicious, "contact", 0.6m),
-            new("明鉴", WordRuleType.White, "product", 0.1m)
+            new(Guid.Empty, "加微信", WordRuleType.Suspicious, "contact", 0.6m),
+            new(Guid.Empty, "明鉴", WordRuleType.White, "product", 0.1m)
         };
 
         var result = engine.Evaluate("明鉴请加微信", rules);
@@ -23,18 +23,19 @@ public sealed class RuleModerationEngineTests
     }
 
     [Fact]
-    public void WhiteRuleFromSameCategoryCanSuppressSuspiciousRule()
+    public void WhiteRuleFromSameCategorySuppressesSignalButStillRequiresSemanticReview()
     {
         var engine = new RuleModerationEngine();
         var rules = new WordRule[]
         {
-            new("加微信", WordRuleType.Suspicious, "contact", 0.6m),
-            new("官方客服", WordRuleType.White, "contact", 0.1m)
+            new(Guid.Empty, "加微信", WordRuleType.Suspicious, "contact", 0.6m),
+            new(Guid.Empty, "官方客服", WordRuleType.White, "contact", 0.1m)
         };
 
         var result = engine.Evaluate("官方客服请加微信", rules);
 
-        Assert.Equal(ModerationDecision.Pass, result.Decision);
-        Assert.False(result.RequiresAi);
+        Assert.Equal(ModerationDecision.Review, result.Decision);
+        Assert.True(result.RequiresAi);
+        Assert.Contains("RULE_CONTEXT_EXCEPTION", result.ReasonCodes);
     }
 }

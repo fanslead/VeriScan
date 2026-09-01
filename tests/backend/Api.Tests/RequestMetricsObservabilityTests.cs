@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Diagnostics.Metrics;
 using Microsoft.Extensions.DependencyInjection;
 using VeriScan.Api.Diagnostics;
@@ -10,7 +11,7 @@ public sealed class RequestMetricsObservabilityTests
     public void RecordsCountAndDurationWithRouteAndStatusDimensions()
     {
         using var listener = new MeterListener();
-        var measurements = new List<MetricMeasurement>();
+        var measurements = new ConcurrentQueue<MetricMeasurement>();
         listener.InstrumentPublished = (instrument, currentListener) =>
         {
             if (instrument.Meter.Name == RequestMetrics.MeterName)
@@ -22,14 +23,14 @@ public sealed class RequestMetricsObservabilityTests
         {
             if (instrument.Name == RequestMetrics.RequestCountName)
             {
-                measurements.Add(new MetricMeasurement(measurement, CopyTags(tags)));
+                measurements.Enqueue(new MetricMeasurement(measurement, CopyTags(tags)));
             }
         });
         listener.SetMeasurementEventCallback<double>((instrument, measurement, tags, _) =>
         {
             if (instrument.Name == RequestMetrics.RequestDurationName)
             {
-                measurements.Add(new MetricMeasurement(measurement, CopyTags(tags)));
+                measurements.Enqueue(new MetricMeasurement(measurement, CopyTags(tags)));
             }
         });
         listener.Start();

@@ -15,6 +15,26 @@ internal static class ApplicationMappings
             application.EnvironmentName,
             application.Status,
             activeKeyCount,
+            application.RuleSetVersion?.PublicRevisionId,
+            application.RuleSetVersion?.Name,
+            application.CreatedAt,
+            application.UpdatedAt);
+    }
+
+    public static ApplicationResponse ToResponseWithRuleSet(
+        ApplicationEntity application,
+        RuleSetVersion? ruleSet,
+        int activeKeyCount)
+    {
+        return new ApplicationResponse(
+            application.Id,
+            application.PublicId,
+            application.Name,
+            application.EnvironmentName,
+            application.Status,
+            activeKeyCount,
+            ruleSet?.PublicRevisionId,
+            ruleSet?.Name,
             application.CreatedAt,
             application.UpdatedAt);
     }
@@ -47,6 +67,7 @@ internal static class ModerationMappings
         return new BatchModerationResponse(
             request.Id,
             request.ApplicationId,
+            request.PolicyRevision,
             ToCamelCase(request.ProcessingStatus.ToString()),
             request.SubmittedAt,
             request.MachineCompletedAt,

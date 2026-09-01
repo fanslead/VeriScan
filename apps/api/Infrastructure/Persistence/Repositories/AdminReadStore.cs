@@ -28,7 +28,7 @@ public sealed partial class AdminReadStore(VeriScanDbContext dbContext) : IAdmin
             item.ErrorCode,
             item.CreatedAt,
             item.MachineCompletedAt,
-            null,
+            item.Request == null ? null : item.Request.PolicyRevision,
             item.AiConfigurationRevision,
             item.ProviderRequestId,
             item.AiInputTokens,

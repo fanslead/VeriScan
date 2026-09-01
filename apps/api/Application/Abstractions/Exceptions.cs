@@ -1,5 +1,13 @@
 namespace VeriScan.Application.Abstractions;
 
+public sealed class DataConcurrencyException : Exception
+{
+    public DataConcurrencyException()
+        : base("数据已被其他请求修改。")
+    {
+    }
+}
+
 public abstract class ApplicationBaseException(string errorCode, string message) : Exception(message)
 {
     public string ErrorCode { get; } = errorCode;

@@ -3,6 +3,8 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Microsoft.Extensions.DependencyInjection;
+using VeriScan.Application.Abstractions;
 using VeriScan.Application.Contracts;
 using VeriScan.Domain.Entities;
 
@@ -26,6 +28,21 @@ public sealed class ModerationApiTests : IClassFixture<ApiTestFactory>
     [Fact]
     public async Task ApiKeyCanSubmitModerationAndPersistsResults()
     {
+        var aiClient = Assert.IsType<TestModerationAiClient>(
+            factory.Services.GetRequiredService<IModerationAiClient>());
+        aiClient.Handler = aiRequest => new AiModerationResult(
+            AiModerationOutcome.Succeeded,
+            aiRequest.Content.Contains("加微信", StringComparison.Ordinal)
+                ? AiModerationLabel.Review
+                : AiModerationLabel.Safe,
+            ["MODEL_DECISION"],
+            [],
+            [],
+            "ai-model@test-safe",
+            "provider-safe",
+            10,
+            3,
+            null);
         using var client = factory.CreateClient();
         var application = await CreateApplicationAsync(client, "内容服务");
         var key = await CreateApiKeyAsync(client, application.Id);
@@ -53,7 +70,7 @@ public sealed class ModerationApiTests : IClassFixture<ApiTestFactory>
         Assert.Equal(ModerationDecision.Reject, result.Results[1].Decision);
         Assert.Equal(ModerationDecision.Review, result.Results[2].Decision);
         Assert.True(result.Results[2].ReviewRequired);
-        Assert.Equal("policy_required", result.Results[2].ReviewSource);
+        Assert.Equal("ai_model", result.Results[2].ReviewSource);
 
         using var getRequest = new HttpRequestMessage(
             HttpMethod.Get,

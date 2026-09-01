@@ -50,6 +50,7 @@ public sealed record BatchModerationItemRequest
 public sealed record BatchModerationResponse(
     Guid RequestId,
     Guid ApplicationId,
+    string PolicyId,
     string ProcessingStatus,
     DateTimeOffset SubmittedAt,
     DateTimeOffset? MachineCompletedAt,

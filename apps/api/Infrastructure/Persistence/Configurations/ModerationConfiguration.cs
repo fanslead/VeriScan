@@ -11,6 +11,7 @@ public sealed class ModerationRequestConfiguration : IEntityTypeConfiguration<Mo
         builder.ToTable("moderation_requests");
         builder.HasKey(request => request.Id);
         builder.Property(request => request.Mode).HasMaxLength(16).IsRequired();
+        builder.Property(request => request.PolicyRevision).HasMaxLength(80).IsRequired();
         builder.Property(request => request.IdempotencyKeyDigest).HasMaxLength(128);
         builder.Property(request => request.RequestFingerprint).HasMaxLength(128);
         builder.Property(request => request.ProcessingStatus).HasConversion<string>().HasMaxLength(32).IsRequired();

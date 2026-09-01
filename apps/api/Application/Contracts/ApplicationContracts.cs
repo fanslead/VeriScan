@@ -34,6 +34,8 @@ public sealed record ApplicationResponse(
     string Environment,
     ApplicationStatus Status,
     int ActiveKeyCount,
+    string? RuleSetRevisionId,
+    string? RuleSetName,
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt);
 

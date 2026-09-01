@@ -16,10 +16,16 @@ public interface IApplicationService
         Guid applicationId,
         UpdateApplicationRequest request,
         CancellationToken cancellationToken);
+
+    Task<ApplicationResponse> BindRuleSetAsync(
+        Guid applicationId,
+        BindApplicationRuleSetRequest request,
+        CancellationToken cancellationToken);
 }
 
 public sealed class ApplicationService(
     IApplicationStore applicationStore,
+    IRuleSetStore ruleSetStore,
     IApiKeyCacheInvalidator cacheInvalidator) : IApplicationService
 {
     public async Task<ApplicationResponse> CreateAsync(
@@ -27,12 +33,18 @@ public sealed class ApplicationService(
         CancellationToken cancellationToken)
     {
         var publicId = $"app_{Guid.CreateVersion7():N}";
-        var application = new ApplicationEntity(Guid.Empty, publicId, request.Name.Trim(), request.Environment);
+        var defaultRuleSet = await ruleSetStore.GetLatestPublishedAsync(cancellationToken);
+        var application = new ApplicationEntity(
+            Guid.Empty,
+            publicId,
+            request.Name.Trim(),
+            request.Environment,
+            defaultRuleSet?.Id);
 
         await applicationStore.AddAsync(application, cancellationToken);
         await applicationStore.SaveChangesAsync(cancellationToken);
 
-        return ApplicationMappings.ToResponse(application, 0);
+        return ApplicationMappings.ToResponseWithRuleSet(application, defaultRuleSet, 0);
     }
 
     public async Task<ApplicationListResponse> ListAsync(CancellationToken cancellationToken)
@@ -98,6 +110,49 @@ public sealed class ApplicationService(
 
         return ApplicationMappings.ToResponse(
             application,
+            application.ApiKeys.Count(key => key.Status == ApiKeyStatus.Active));
+    }
+
+    public async Task<ApplicationResponse> BindRuleSetAsync(
+        Guid applicationId,
+        BindApplicationRuleSetRequest request,
+        CancellationToken cancellationToken)
+    {
+        var application = await applicationStore.GetByIdAsync(applicationId, cancellationToken)
+            ?? throw new ResourceNotFoundException("应用不存在。");
+        var ruleSet = await ruleSetStore.GetByPublicRevisionIdAsync(
+            request.PublicRevisionId.Trim(),
+            cancellationToken)
+            ?? throw new ResourceNotFoundException("规则集版本不存在。");
+        if (ruleSet.Status != RuleSetStatus.Published)
+        {
+            throw new RequestConflictException("应用只能绑定已发布的规则集版本。");
+        }
+
+        if (application.RuleSetVersionId == ruleSet.Id)
+        {
+            return ApplicationMappings.ToResponseWithRuleSet(
+                application,
+                ruleSet,
+                application.ApiKeys.Count(key => key.Status == ApiKeyStatus.Active));
+        }
+
+        var changedAt = DateTimeOffset.UtcNow;
+        application.RuleSetVersion?.RecordBindingChange(changedAt);
+        ruleSet.RecordBindingChange(changedAt);
+        application.BindRuleSet(ruleSet.Id, changedAt);
+        try
+        {
+            await applicationStore.SaveChangesAsync(cancellationToken);
+        }
+        catch (DataConcurrencyException)
+        {
+            throw new RequestConflictException("规则集状态或应用绑定已被其他请求修改，请刷新后重试。");
+        }
+
+        return ApplicationMappings.ToResponseWithRuleSet(
+            application,
+            ruleSet,
             application.ApiKeys.Count(key => key.Status == ApiKeyStatus.Active));
     }
 }

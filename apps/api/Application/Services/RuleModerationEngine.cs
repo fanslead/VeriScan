@@ -69,17 +69,19 @@ public sealed class RuleModerationEngine : IRuleModerationEngine
                 []);
         }
 
-        if (whiteMatches.Length > 0)
+        if (hasRelatedWhiteMatch || whiteMatches.Length > 0)
         {
             return new RuleEvaluation(
-                ModerationDecision.Pass,
+                ModerationDecision.Review,
+                true,
+                "policy_required",
                 false,
                 null,
-                false,
-                0.01m,
-                "deterministic_rule",
+                null,
                 "local_rules",
-                ["RULE_WHITE_WORD"],
+                hasRelatedWhiteMatch
+                    ? ["RULE_CONTEXT_EXCEPTION", "CALLER_REVIEW_REQUIRED"]
+                    : ["RULE_WHITE_SIGNAL", "CALLER_REVIEW_REQUIRED"],
                 [],
                 []);
         }

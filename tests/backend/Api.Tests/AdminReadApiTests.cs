@@ -74,7 +74,7 @@ public sealed class AdminReadApiTests : IClassFixture<ApiTestFactory>
         Assert.Equal("记录查询应用", record.ApplicationName);
         Assert.Equal(ModerationDecision.Review, record.Decision);
         Assert.Equal(1, record.DetectLevel);
-        Assert.Null(record.PolicyVersion);
+        Assert.StartsWith("ruleset@", record.PolicyVersion, StringComparison.Ordinal);
         Assert.NotEmpty(record.ContentHash);
         Assert.NotEmpty(record.ReasonCodes);
         Assert.Empty(record.Evidence);

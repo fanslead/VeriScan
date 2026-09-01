@@ -15,6 +15,7 @@ public sealed class ApplicationStore(VeriScanDbContext dbContext) : IApplication
     {
         return dbContext.Applications
             .Include(application => application.ApiKeys)
+            .Include(application => application.RuleSetVersion)
             .SingleOrDefaultAsync(application => application.Id == id, cancellationToken);
     }
 
@@ -22,12 +23,20 @@ public sealed class ApplicationStore(VeriScanDbContext dbContext) : IApplication
     {
         return await dbContext.Applications
             .Include(application => application.ApiKeys)
+            .Include(application => application.RuleSetVersion)
             .OrderByDescending(application => application.CreatedAt)
             .ToListAsync(cancellationToken);
     }
 
-    public Task SaveChangesAsync(CancellationToken cancellationToken)
+    public async Task SaveChangesAsync(CancellationToken cancellationToken)
     {
-        return dbContext.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            throw new DataConcurrencyException();
+        }
     }
 }

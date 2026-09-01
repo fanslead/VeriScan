@@ -6,13 +6,19 @@ public sealed class ApplicationEntity
     {
     }
 
-    public ApplicationEntity(Guid tenantId, string publicId, string name, string environmentName)
+    public ApplicationEntity(
+        Guid tenantId,
+        string publicId,
+        string name,
+        string environmentName,
+        Guid? ruleSetVersionId = null)
     {
         Id = Guid.CreateVersion7();
         TenantId = tenantId;
         PublicId = publicId;
         Name = name;
         EnvironmentName = environmentName;
+        RuleSetVersionId = ruleSetVersionId;
         Status = ApplicationStatus.Active;
         CreatedAt = DateTimeOffset.UtcNow;
         UpdatedAt = CreatedAt;
@@ -28,6 +34,8 @@ public sealed class ApplicationEntity
 
     public string EnvironmentName { get; private set; } = string.Empty;
 
+    public Guid? RuleSetVersionId { get; private set; }
+
     public ApplicationStatus Status { get; private set; }
 
     public DateTimeOffset CreatedAt { get; private set; }
@@ -37,6 +45,8 @@ public sealed class ApplicationEntity
     public ICollection<ApplicationApiKey> ApiKeys { get; private set; } = new List<ApplicationApiKey>();
 
     public ICollection<ModerationRequest> ModerationRequests { get; private set; } = new List<ModerationRequest>();
+
+    public RuleSetVersion? RuleSetVersion { get; private set; }
 
     public void Rename(string name)
     {
@@ -60,6 +70,12 @@ public sealed class ApplicationEntity
     {
         Status = ApplicationStatus.Archived;
         UpdatedAt = DateTimeOffset.UtcNow;
+    }
+
+    public void BindRuleSet(Guid ruleSetVersionId, DateTimeOffset changedAt)
+    {
+        RuleSetVersionId = ruleSetVersionId;
+        UpdatedAt = changedAt;
     }
 }
 

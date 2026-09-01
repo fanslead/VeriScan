@@ -6,9 +6,10 @@ public sealed class WordRule
     {
     }
 
-    public WordRule(string term, WordRuleType type, string category, decimal weight)
+    public WordRule(Guid ruleSetVersionId, string term, WordRuleType type, string category, decimal weight)
     {
         Id = Guid.CreateVersion7();
+        RuleSetVersionId = ruleSetVersionId;
         Term = term;
         Type = type;
         Category = category;
@@ -18,6 +19,8 @@ public sealed class WordRule
     }
 
     public Guid Id { get; private set; }
+
+    public Guid RuleSetVersionId { get; private set; }
 
     public string Term { get; private set; } = string.Empty;
 
@@ -30,6 +33,8 @@ public sealed class WordRule
     public bool IsEnabled { get; private set; }
 
     public DateTimeOffset CreatedAt { get; private set; }
+
+    public RuleSetVersion? RuleSetVersion { get; private set; }
 }
 
 public enum WordRuleType
