@@ -29,7 +29,7 @@ export function LoginPage({ unavailable = false }: { unavailable?: boolean }) {
           </span>
         </div>
         <div className="auth-panel__copy">
-          <span className="eyebrow">CALIBRATION DESK / ADMIN</span>
+          <span className="eyebrow">内容安全运营台</span>
           <Typography.Title heading={1} id="auth-title">
             {unavailable ? '管理入口暂不可用' : '进入管理后台'}
           </Typography.Title>

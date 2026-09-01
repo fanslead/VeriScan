@@ -7,6 +7,7 @@ import {
   moderationRecords,
   overviewStats,
   ruleSets,
+  auditEvents,
 } from './mockData';
 import type {
   AiConfiguration,
@@ -80,6 +81,22 @@ export class MockApiClient implements ApiClient {
 
     if (pathname === '/overview') {
       return result(overviewStats) as T;
+    }
+
+    if (pathname === '/audit-events') {
+      const action = search.get('action');
+      const applicationId = search.get('applicationId');
+      const limit = Math.max(Number(search.get('limit') ?? '100'), 1);
+      const items = auditEvents
+        .filter((event) => !action || event.action === action)
+        .filter((event) => !applicationId || event.applicationId === applicationId)
+        .slice(0, limit);
+      return result({
+        items,
+        total: items.length,
+        dataFrom: items.at(-1)?.occurredAt ?? new Date().toISOString(),
+        dataThrough: items[0]?.occurredAt ?? new Date().toISOString(),
+      }) as T;
     }
 
     if (pathname === '/ai/configurations') {
@@ -211,7 +228,7 @@ export class MockApiClient implements ApiClient {
         publicRevisionId: `ruleset@${Date.now()}`,
         name: input.name,
         status: 'draft',
-        ruleCount: input.rules.length,
+        ruleCount: input.rules.length + input.regexRules.length + input.combinationRules.length,
         rulesTruncated: false,
         createdAt: now,
         updatedAt: now,
@@ -220,6 +237,17 @@ export class MockApiClient implements ApiClient {
         publishedAt: null,
         publishedChecksum: null,
         applicationCount: 0,
+        normalizationProfile: input.normalizationProfile,
+        regexRules: input.regexRules.map((rule, index) => ({
+          ...rule,
+          id: `${id}-regex-${index}`,
+          isEnabled: true,
+        })),
+        combinationRules: input.combinationRules.map((rule, index) => ({
+          ...rule,
+          id: `${id}-combination-${index}`,
+          isEnabled: true,
+        })),
         rules: input.rules.map((rule, index) => ({
           ...rule,
           id: `${id}-word-${index}`,
@@ -536,7 +564,19 @@ export class MockApiClient implements ApiClient {
         id: `${ruleSet.id}-word-${index}`,
         isEnabled: true,
       }));
-      ruleSet.ruleCount = ruleSet.rules.length;
+      ruleSet.normalizationProfile = input.normalizationProfile;
+      ruleSet.regexRules = input.regexRules.map((rule, index) => ({
+        ...rule,
+        id: `${ruleSet.id}-regex-${index}`,
+        isEnabled: true,
+      }));
+      ruleSet.combinationRules = input.combinationRules.map((rule, index) => ({
+        ...rule,
+        id: `${ruleSet.id}-combination-${index}`,
+        isEnabled: true,
+      }));
+      ruleSet.ruleCount =
+        ruleSet.rules.length + ruleSet.regexRules.length + ruleSet.combinationRules.length;
       ruleSet.updatedAt = new Date().toISOString();
       ruleSet.lastValidatedAt = null;
       ruleSet.lastValidatedChecksum = null;

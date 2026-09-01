@@ -7,6 +7,7 @@ import { AuthProvider } from '@/shared/auth/AuthProvider';
 import { AuthGate } from '@/features/auth/AuthGate';
 import { AuthCallbackPage } from '@/features/auth/AuthCallbackPage';
 import { LoginPage } from '@/features/auth/LoginPage';
+import { CapabilityGuard } from '@/shared/auth/CapabilityGuard';
 
 const DashboardPage = lazy(async () => ({
   default: (await import('@/features/dashboard/DashboardPage')).DashboardPage,
@@ -31,6 +32,9 @@ const RuleSetsPage = lazy(async () => ({
 }));
 const AiConfigurationsPage = lazy(async () => ({
   default: (await import('@/features/ai/AiConfigurationsPage')).AiConfigurationsPage,
+}));
+const AuditEventsPage = lazy(async () => ({
+  default: (await import('@/features/audit/AuditEventsPage')).AuditEventsPage,
 }));
 
 const queryClient = new QueryClient({
@@ -64,13 +68,28 @@ export function App() {
               >
                 <Route index element={<DashboardPage />} />
                 <Route path="applications" element={<ApplicationListPage />} />
-                <Route path="applications/new" element={<CreateApplicationPage />} />
+                <Route
+                  path="applications/new"
+                  element={
+                    <CapabilityGuard capability="operate">
+                      <CreateApplicationPage />
+                    </CapabilityGuard>
+                  }
+                />
                 <Route path="applications/:appId" element={<ApplicationDetailPage />} />
                 <Route path="applications/:appId/keys" element={<ApiKeysPage />} />
                 <Route path="records" element={<ModerationRecordsPage />} />
                 <Route path="records/:recordId" element={<ModerationRecordsPage />} />
                 <Route path="ai-settings" element={<AiConfigurationsPage />} />
                 <Route path="rules" element={<RuleSetsPage />} />
+                <Route
+                  path="audit"
+                  element={
+                    <CapabilityGuard capability="audit">
+                      <AuditEventsPage />
+                    </CapabilityGuard>
+                  }
+                />
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Route>
             </Routes>

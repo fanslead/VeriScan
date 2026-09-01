@@ -1,5 +1,6 @@
 import type {
   AiConfiguration,
+  AuditEvent,
   ApiKey,
   Application,
   ModerationRecord,
@@ -7,13 +8,61 @@ import type {
   RuleSet,
 } from './types';
 
+export const auditEvents: AuditEvent[] = [
+  {
+    id: 'audit-1',
+    tenantId: null,
+    applicationId: 'app-commerce',
+    apiKeyId: null,
+    actorType: 'admin',
+    actorId: 'lin.mo',
+    action: 'application.rule_set_bound',
+    resourceType: 'application',
+    resourceId: 'app-commerce',
+    beforeJson: JSON.stringify({ revision: 'ruleset@community-v3', status: 'Active' }),
+    afterJson: JSON.stringify({ revision: 'ruleset@community-v4', status: 'Active' }),
+    correlationId: 'req-demo-1',
+    occurredAt: '2026-09-01T10:32:00+08:00',
+  },
+  {
+    id: 'audit-2',
+    tenantId: null,
+    applicationId: null,
+    apiKeyId: null,
+    actorType: 'admin',
+    actorId: 'lin.mo',
+    action: 'ai_configuration.activated',
+    resourceType: 'ai_configuration',
+    resourceId: 'ai-config-safe-route',
+    beforeJson: JSON.stringify({ revision: 'ai-model@2026-07', isActive: false }),
+    afterJson: JSON.stringify({ revision: 'ai-model@2026-08-safe', isActive: true }),
+    correlationId: 'req-demo-2',
+    occurredAt: '2026-09-01T09:18:00+08:00',
+  },
+  {
+    id: 'audit-3',
+    tenantId: null,
+    applicationId: 'app-travel',
+    apiKeyId: 'key-travel-prod',
+    actorType: 'admin',
+    actorId: 'lin.mo',
+    action: 'api_key.rotated',
+    resourceType: 'api_key',
+    resourceId: 'key-travel-prod',
+    beforeJson: null,
+    afterJson: JSON.stringify({ keyPrefix: 'vsk_live_a2e7', status: 'Active' }),
+    correlationId: 'req-demo-3',
+    occurredAt: '2026-08-31T17:45:00+08:00',
+  },
+];
+
 export const ruleSets: RuleSet[] = [
   {
     id: 'rules-community-v4',
     publicRevisionId: 'ruleset@community-v4',
     name: '社区内容基础规则',
     status: 'published',
-    ruleCount: 5,
+    ruleCount: 7,
     rulesTruncated: false,
     createdAt: '2026-08-28T09:20:00+08:00',
     updatedAt: '2026-09-01T09:12:00+08:00',
@@ -22,6 +71,34 @@ export const ruleSets: RuleSet[] = [
     publishedAt: '2026-09-01T09:12:00+08:00',
     publishedChecksum: '9a82d6a4f6c5be07313cbcdad44bb3c339b42e18d902f02e3d05f101719d838d',
     applicationCount: 2,
+    normalizationProfile: 'traditionalSimplified',
+    regexRules: [
+      {
+        id: 'regex-1',
+        pattern: String.raw`1[3-9]\d{9}`,
+        action: 'forceReview',
+        category: 'contact',
+        weight: 0.8,
+        timeoutMs: 100,
+        maxInputLength: 65_536,
+        engineMode: 'nonBacktracking',
+        priority: 0,
+        isEnabled: true,
+      },
+    ],
+    combinationRules: [
+      {
+        id: 'combination-1',
+        name: '站外导流',
+        terms: ['优惠', '加微信'],
+        action: 'riskSignal',
+        category: 'contact',
+        weight: 0.6,
+        windowSize: 64,
+        priority: 0,
+        isEnabled: true,
+      },
+    ],
     rules: [
       {
         id: 'word-1',
@@ -72,6 +149,9 @@ export const ruleSets: RuleSet[] = [
     publishedAt: null,
     publishedChecksum: null,
     applicationCount: 0,
+    normalizationProfile: 'default',
+    regexRules: [],
+    combinationRules: [],
     rules: [
       {
         id: 'word-6',

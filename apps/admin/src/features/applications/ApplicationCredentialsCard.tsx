@@ -23,7 +23,7 @@ export function ApplicationCredentialsCard({
       title={
         <div className="panel-heading">
           <div>
-            <span className="section-kicker">CREDENTIALS</span>
+            <span className="section-kicker">接入密钥</span>
             <h2>API Key</h2>
           </div>
           <Link to={`/applications/${applicationId}/keys`} className="panel-link">

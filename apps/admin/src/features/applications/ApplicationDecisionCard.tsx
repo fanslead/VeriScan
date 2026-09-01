@@ -21,7 +21,7 @@ export function ApplicationDecisionCard({
       title={
         <div className="panel-heading">
           <div>
-            <span className="section-kicker">DECISION TRACE</span>
+            <span className="section-kicker">处理链路</span>
             <h2>应用判定轨</h2>
           </div>
           <span className="panel-meta">策略 {policyVersion || '暂无版本'}</span>

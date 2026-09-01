@@ -45,7 +45,7 @@ export function RecordDetailDrawer({
         <div className="record-drawer">
           <div className="record-drawer__header">
             <div>
-              <span className="section-kicker">RECORD / {record.id}</span>
+              <span className="section-kicker">审核记录 · {record.id}</span>
               <Typography.Title heading={4}>{record.applicationName}</Typography.Title>
             </div>
             <StatusBadge status={record.status} />

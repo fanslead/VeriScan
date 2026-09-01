@@ -15,7 +15,7 @@ export function ApplicationPolicyCard({
       title={
         <div className="panel-heading">
           <div>
-            <span className="section-kicker">POLICY</span>
+            <span className="section-kicker">当前规则</span>
             <h2>当前策略</h2>
           </div>
           <Button theme="borderless" icon={<IconSetting />} onClick={onOpenRules}>

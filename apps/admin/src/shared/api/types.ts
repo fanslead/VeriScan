@@ -14,6 +14,15 @@ export type AiDecodingMode = 'sendTemperatureZero' | 'omitTemperature' | 'provid
 export type AiConfigurationStatus = 'draft' | 'published' | 'archived';
 export type RuleSetStatus = 'draft' | 'published' | 'archived';
 export type WordRuleType = 'black' | 'suspicious' | 'white';
+export type RuleAction =
+  | 'hardReject'
+  | 'riskSignal'
+  | 'contextException'
+  | 'forceReview'
+  | 'monitorOnly';
+export type RuleMatchMode = 'normalizedContains';
+export type RuleNormalizationProfile = 'default' | 'traditionalSimplified';
+export type RegexRuleEngineMode = 'nonBacktracking' | 'backtracking';
 
 export interface Application {
   id: string;
@@ -46,6 +55,37 @@ export interface ApplicationUsage {
   aiInputTokens: number | null;
   aiOutputTokens: number | null;
   aiFailureCount: number;
+}
+
+export interface AuditEvent {
+  id: string;
+  tenantId: string | null;
+  applicationId: string | null;
+  apiKeyId: string | null;
+  actorType: string;
+  actorId: string | null;
+  action: string;
+  resourceType: string;
+  resourceId: string;
+  beforeJson: string | null;
+  afterJson: string | null;
+  correlationId: string | null;
+  occurredAt: string;
+}
+
+export interface AuditEventList {
+  items: AuditEvent[];
+  total: number;
+  dataFrom: string;
+  dataThrough: string;
+}
+
+export interface ListAuditEventsParams {
+  applicationId?: string;
+  action?: string;
+  from?: string;
+  through?: string;
+  limit?: number;
 }
 
 export interface ApiKey {
@@ -123,6 +163,13 @@ export interface WordRuleDraftInput {
   type: WordRuleType;
   category: string;
   weight: number;
+  action?: RuleAction | null;
+  matchMode?: RuleMatchMode;
+  language?: string | null;
+  scene?: string | null;
+  evidenceTemplate?: string | null;
+  priority?: number;
+  source?: string | null;
 }
 
 export interface WordRule extends WordRuleDraftInput {
@@ -130,9 +177,51 @@ export interface WordRule extends WordRuleDraftInput {
   isEnabled: boolean;
 }
 
+export interface RegexRuleDraftInput {
+  pattern: string;
+  action: RuleAction;
+  category: string;
+  weight: number;
+  timeoutMs: number;
+  maxInputLength: number;
+  engineMode: RegexRuleEngineMode;
+  language?: string | null;
+  scene?: string | null;
+  evidenceTemplate?: string | null;
+  priority?: number;
+  source?: string | null;
+}
+
+export interface RegexRule extends RegexRuleDraftInput {
+  id: string;
+  isEnabled: boolean;
+}
+
+export interface CombinationRuleDraftInput {
+  name: string;
+  terms: string[];
+  action: RuleAction;
+  category: string;
+  weight: number;
+  windowSize: number;
+  language?: string | null;
+  scene?: string | null;
+  evidenceTemplate?: string | null;
+  priority?: number;
+  source?: string | null;
+}
+
+export interface CombinationRule extends CombinationRuleDraftInput {
+  id: string;
+  isEnabled: boolean;
+}
+
 export interface RuleSetDraftInput {
   name: string;
   rules: WordRuleDraftInput[];
+  normalizationProfile: RuleNormalizationProfile;
+  regexRules: RegexRuleDraftInput[];
+  combinationRules: CombinationRuleDraftInput[];
 }
 
 export interface RuleSet {
@@ -150,6 +239,9 @@ export interface RuleSet {
   publishedChecksum: string | null;
   applicationCount: number;
   rules: WordRule[];
+  normalizationProfile: RuleNormalizationProfile;
+  regexRules: RegexRule[];
+  combinationRules: CombinationRule[];
 }
 
 export interface RuleSetValidationIssue {

@@ -17,6 +17,34 @@ const response = {
   publishedAt: '2026-09-01T01:00:00Z',
   publishedChecksum: 'abc',
   applicationCount: 2,
+  normalizationProfile: 'traditionalSimplified',
+  regexRules: [
+    {
+      id: 'regex-1',
+      pattern: 'https?://[^\\s]+',
+      action: 'forceReview',
+      category: 'contact',
+      weight: 0.8,
+      timeoutMs: 100,
+      maxInputLength: 65536,
+      engineMode: 'nonBacktracking',
+      priority: 0,
+      isEnabled: true,
+    },
+  ],
+  combinationRules: [
+    {
+      id: 'combination-1',
+      name: '站外导流',
+      terms: ['优惠', '加微信'],
+      action: 'riskSignal',
+      category: 'contact',
+      weight: 0.6,
+      windowSize: 64,
+      priority: 0,
+      isEnabled: true,
+    },
+  ],
   rules: [
     {
       id: 'word-1',
@@ -73,6 +101,9 @@ describe('规则集 API 契约', () => {
     const input = {
       name: ' 基础规则 ',
       rules: [{ term: ' 赌博 ', type: 'black' as const, category: ' GAMBLING ', weight: 1 }],
+      normalizationProfile: 'traditionalSimplified' as const,
+      regexRules: [],
+      combinationRules: [],
     };
 
     await service.list();
@@ -94,7 +125,21 @@ describe('规则集 API 契约', () => {
     ]);
     expect(client.calls[1].body).toEqual({
       name: '基础规则',
-      rules: [{ term: '赌博', type: 'black', category: 'gambling', weight: 1 }],
+      rules: [
+        {
+          term: '赌博',
+          type: 'black',
+          category: 'gambling',
+          weight: 1,
+          language: null,
+          scene: null,
+          evidenceTemplate: null,
+          source: null,
+        },
+      ],
+      normalizationProfile: 'traditionalSimplified',
+      regexRules: [],
+      combinationRules: [],
     });
   });
 });

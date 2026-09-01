@@ -20,6 +20,7 @@ import { AiConfigurationEditor } from './AiConfigurationEditor';
 import { AiConfigurationList } from './AiConfigurationList';
 import { AiConfigurationSummary } from './AiConfigurationSummary';
 import { AiConfigurationTestDialog } from './AiConfigurationTestDialog';
+import { useAdminCapability } from '@/shared/auth/permissions';
 
 const errorMessage = (error: unknown, fallback: string) => {
   if (error instanceof ApiHttpError && error.status === 409) return error.message;
@@ -38,6 +39,8 @@ interface LifecycleRequest {
 }
 
 export function AiConfigurationsPage() {
+  const canEdit = useAdminCapability('editAi');
+  const canPublish = useAdminCapability('publish');
   const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const [editorVisible, setEditorVisible] = useState(false);
@@ -161,7 +164,7 @@ export function AiConfigurationsPage() {
     return (
       <div className="page-stack">
         <PageIntro
-          eyebrow="GOVERNANCE / MODEL ROUTING"
+          eyebrow="智能研判 · 模型服务"
           title="AI 配置"
           description="管理外部模型路由的版本、连接入口与生效状态。"
         />
@@ -173,13 +176,15 @@ export function AiConfigurationsPage() {
   return (
     <div className="page-stack ai-config-page">
       <PageIntro
-        eyebrow="GOVERNANCE / MODEL ROUTING"
+        eyebrow="智能研判 · 模型服务"
         title="AI 配置"
         description="管理外部模型路由的版本、连接入口与生效状态。"
         actions={
-          <Button theme="solid" type="primary" icon={<IconPlus />} onClick={openCreate}>
-            创建配置草稿
-          </Button>
+          canEdit ? (
+            <Button theme="solid" type="primary" icon={<IconPlus />} onClick={openCreate}>
+              创建配置草稿
+            </Button>
+          ) : undefined
         }
       />
 
@@ -193,7 +198,7 @@ export function AiConfigurationsPage() {
       {!configurations.isPending ? <AiConfigurationSummary configurations={rows} /> : null}
       <div className="ai-config-list-heading">
         <div>
-          <span className="section-kicker">CONFIGURATION INVENTORY</span>
+          <span className="section-kicker">全部可用版本</span>
           <h2>模型路由版本</h2>
         </div>
         <span>{configurations.isPending ? '正在同步…' : `${rows.length} 份配置`}</span>
@@ -203,6 +208,8 @@ export function AiConfigurationsPage() {
         loading={configurations.isPending}
         error={false}
         busyId={busyId}
+        canEdit={canEdit}
+        canPublish={canPublish}
         onRetry={() => void configurations.refetch()}
         onEdit={openEdit}
         onTest={runTest}

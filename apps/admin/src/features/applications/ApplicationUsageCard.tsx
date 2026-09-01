@@ -31,7 +31,7 @@ export function ApplicationUsageCard({
       title={
         <div className="panel-heading">
           <div>
-            <span className="section-kicker">USAGE / 7 DAYS</span>
+            <span className="section-kicker">最近 7 天</span>
             <h2>调用概览</h2>
           </div>
           <Link to={`/records?applicationId=${applicationId}`} className="panel-link">

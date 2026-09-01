@@ -13,6 +13,8 @@ body {
   background: var(--frost);
   color: var(--graphite);
   font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.55;
   -webkit-font-smoothing: antialiased;
 }
 button,
@@ -30,6 +32,6 @@ a {
   text-decoration: none;
 }
 :focus-visible {
-  outline: 3px solid rgba(18, 124, 114, 0.35);
+  outline: 3px solid rgba(14, 119, 107, 0.3);
   outline-offset: 2px;
 }

@@ -77,7 +77,7 @@ export function CreateApplicationPage() {
       </button>
       <div className="page-intro">
         <div>
-          <div className="eyebrow">APPLICATIONS / NEW</div>
+          <div className="eyebrow">接入管理 · 创建应用</div>
           <Typography.Title heading={1}>创建应用</Typography.Title>
           <Typography.Text type="tertiary">
             先建立应用边界，再为它签发可轮换的访问凭证。
@@ -88,7 +88,7 @@ export function CreateApplicationPage() {
         <Card className="panel form-panel">
           <form onSubmit={submit} noValidate>
             <div className="form-section">
-              <div className="section-kicker">BASIC INFORMATION</div>
+              <div className="section-kicker">基础信息</div>
               <Typography.Title heading={4}>应用信息</Typography.Title>
               <p className="form-help">名称会显示在记录、统计和运营通知中。</p>
             </div>

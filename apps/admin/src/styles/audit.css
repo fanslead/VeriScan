@@ -1,0 +1,142 @@
+.audit-page .table-toolbar h2 {
+  margin: 6px 0 0;
+  color: var(--ink);
+  font-size: 20px;
+}
+
+.audit-page .table-filters .semi-select {
+  width: 190px;
+}
+
+.audit-time,
+.audit-event-name {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.audit-time strong,
+.audit-event-name strong {
+  color: var(--ink);
+  font-weight: 650;
+}
+
+.audit-time small,
+.audit-event-name small {
+  color: var(--muted);
+}
+
+.audit-detail {
+  display: grid;
+  gap: 28px;
+}
+
+.audit-detail__lead {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.audit-detail__icon {
+  width: 48px;
+  height: 48px;
+  display: grid;
+  place-items: center;
+  border-radius: 14px;
+  color: var(--teal);
+  background: var(--teal-soft);
+  font-size: 20px;
+}
+
+.audit-detail__lead h2 {
+  margin: 5px 0 3px;
+  color: var(--ink);
+  font-size: 24px;
+}
+
+.audit-detail__lead p,
+.audit-detail__changes > p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.audit-detail__facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  padding: 1px;
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--line);
+}
+
+.audit-detail__facts > div {
+  display: grid;
+  gap: 5px;
+  padding: 16px;
+  background: var(--surface);
+}
+
+.audit-detail__facts dt {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.audit-detail__facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.audit-detail__changes h3 {
+  margin: 0 0 14px;
+  color: var(--ink);
+  font-size: 17px;
+}
+
+.audit-change {
+  display: grid;
+  grid-template-columns: 90px minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  padding: 14px 0;
+  border-top: 1px solid var(--line);
+}
+
+.audit-change > strong {
+  color: var(--ink);
+}
+
+.audit-change > span {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+  overflow-wrap: anywhere;
+}
+
+.audit-change small,
+.audit-change i {
+  color: var(--muted);
+  font-size: 11px;
+  font-style: normal;
+}
+
+@media (max-width: 680px) {
+  .audit-page .table-filters .semi-select {
+    width: 100%;
+  }
+
+  .audit-detail__facts {
+    grid-template-columns: 1fr;
+  }
+
+  .audit-change {
+    grid-template-columns: 80px minmax(0, 1fr);
+  }
+
+  .audit-change i {
+    display: none;
+  }
+}

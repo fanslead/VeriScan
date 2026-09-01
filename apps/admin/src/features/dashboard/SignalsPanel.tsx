@@ -9,7 +9,7 @@ export function SignalsPanel({ onRefresh }: { onRefresh: () => void }) {
       title={
         <div className="panel-heading">
           <div>
-            <span className="section-kicker">SIGNALS / 07:00—NOW</span>
+            <span className="section-kicker">今日 07:00 至今</span>
             <h2>需要关注的变化</h2>
           </div>
           <Button

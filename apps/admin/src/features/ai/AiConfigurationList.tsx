@@ -7,6 +7,8 @@ interface AiConfigurationListProps {
   loading: boolean;
   error: boolean;
   busyId: string | null;
+  canEdit: boolean;
+  canPublish: boolean;
   onRetry: () => void;
   onEdit: (configuration: AiConfiguration) => void;
   onTest: (configuration: AiConfiguration) => void;
@@ -21,6 +23,8 @@ export function AiConfigurationList({
   loading,
   error,
   busyId,
+  canEdit,
+  canPublish,
   onRetry,
   onEdit,
   onTest,
@@ -74,6 +78,8 @@ export function AiConfigurationList({
           key={configuration.id}
           configuration={configuration}
           busy={busyId === configuration.id}
+          canEdit={canEdit}
+          canPublish={canPublish}
           onEdit={onEdit}
           onTest={onTest}
           onCreateRevision={onCreateRevision}

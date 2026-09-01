@@ -1,10 +1,47 @@
+.permission-page {
+  min-height: min(640px, calc(100vh - 160px));
+  display: grid;
+  place-items: center;
+}
+
+.permission-card {
+  width: min(560px, 100%);
+  display: grid;
+  justify-items: start;
+  gap: 20px;
+  padding: 36px;
+}
+
+.permission-card__icon {
+  width: 48px;
+  height: 48px;
+  display: grid;
+  place-items: center;
+  border-radius: 14px;
+  color: var(--teal);
+  background: var(--teal-soft);
+  font-size: 22px;
+}
+
+.permission-card h1 {
+  margin: 8px 0 10px;
+  font-size: 26px;
+  line-height: 1.25;
+}
+
+.permission-card p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.75;
+}
+
 .status-badge {
   display: inline-flex;
   align-items: center;
   gap: 5px;
   border: 0 !important;
   border-radius: 5px !important;
-  font-size: 11px !important;
+  font-size: 12px !important;
 }
 .status-badge .status-dot {
   width: 5px;
@@ -41,7 +78,7 @@
 .table-toolbar .semi-typography-title {
   margin: 7px 0 0;
   color: var(--ink);
-  font-size: 17px;
+  font-size: 19px;
   font-weight: 650;
 }
 .table-filters {
@@ -75,14 +112,14 @@
 }
 .data-table .semi-table-thead > .semi-table-row > .semi-table-row-head {
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 500;
 }
 .data-table .semi-table-tbody > .semi-table-row > .semi-table-row-cell {
   height: 68px;
   border-color: var(--line);
   color: var(--graphite);
-  font-size: 12px;
+  font-size: 13px;
 }
 .data-table .semi-table-tbody > .semi-table-row:hover > .semi-table-row-cell {
   background: #fbfdfc;
@@ -101,7 +138,7 @@
 .table-primary-link strong {
   overflow: hidden;
   color: var(--ink);
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -144,7 +181,7 @@
 }
 .table-secondary strong {
   color: var(--graphite);
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 500;
 }
 .data-mono,

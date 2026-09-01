@@ -12,7 +12,7 @@ export function AiConfigurationSummary({ configurations }: { configurations: AiC
   return (
     <section className="ai-config-summary" aria-label="AI 路由摘要">
       <Card className="panel ai-config-summary__active">
-        <div className="ai-config-summary__eyebrow">ACTIVE ROUTE</div>
+        <div className="ai-config-summary__eyebrow">当前生效模型</div>
         <div className="ai-config-summary__active-row">
           <span
             className={`ai-config-summary__pulse${active ? '' : ' is-empty'}`}

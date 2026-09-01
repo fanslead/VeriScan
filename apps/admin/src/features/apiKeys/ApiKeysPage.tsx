@@ -11,8 +11,10 @@ import { ErrorState } from '@/shared/ui/ErrorState';
 import { OneTimeKeyDialog } from './OneTimeKeyDialog';
 import { ApiKeysTable } from './ApiKeysTable';
 import { CreateApiKeyModal } from './CreateApiKeyModal';
+import { useAdminCapability } from '@/shared/auth/permissions';
 
 export function ApiKeysPage() {
+  const canManage = useAdminCapability('operate');
   const { appId = '' } = useParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -108,22 +110,24 @@ export function ApiKeysPage() {
       </button>
       <div className="page-intro">
         <div>
-          <div className="eyebrow">APPLICATION / {app.slug} / CREDENTIALS</div>
+          <div className="eyebrow">{app.name} · 接入密钥</div>
           <Typography.Title heading={1}>API Key</Typography.Title>
           <Typography.Text type="tertiary">
             凭证只在创建或轮换后显示一次；每枚 Key 都可以独立撤销。
           </Typography.Text>
         </div>
-        <div className="page-actions">
-          <Button
-            theme="solid"
-            type="primary"
-            icon={<IconPlus />}
-            onClick={() => setCreateVisible(true)}
-          >
-            创建 API Key
-          </Button>
-        </div>
+        {canManage ? (
+          <div className="page-actions">
+            <Button
+              theme="solid"
+              type="primary"
+              icon={<IconPlus />}
+              onClick={() => setCreateVisible(true)}
+            >
+              创建 API Key
+            </Button>
+          </div>
+        ) : null}
       </div>
       <div className="key-policy-banner">
         <div className="key-policy-banner__icon">
@@ -137,7 +141,7 @@ export function ApiKeysPage() {
       <Card className="panel table-panel">
         <div className="table-toolbar">
           <div>
-            <span className="section-kicker">CREDENTIAL INVENTORY</span>
+            <span className="section-kicker">全部接入密钥</span>
             <Typography.Title heading={4}>凭证列表</Typography.Title>
           </div>
           <span className="table-count">{rows.length} 枚</span>
@@ -145,26 +149,35 @@ export function ApiKeysPage() {
         {rows.length === 0 ? (
           <EmptyState
             title="还没有 API Key"
-            description="为应用创建第一枚凭证，开始接入审核接口。"
-            actionText="创建 API Key"
-            onAction={() => setCreateVisible(true)}
+            description={
+              canManage ? '为应用创建第一枚凭证，开始接入审核接口。' : '当前应用尚未创建接入凭证。'
+            }
+            actionText={canManage ? '创建 API Key' : undefined}
+            onAction={canManage ? () => setCreateVisible(true) : undefined}
           />
         ) : (
-          <ApiKeysTable rows={rows} onRotate={setRotateTarget} onRevoke={setRevokeTarget} />
+          <ApiKeysTable
+            rows={rows}
+            canManage={canManage}
+            onRotate={setRotateTarget}
+            onRevoke={setRevokeTarget}
+          />
         )}
       </Card>
       <div className="page-footnote">
         <Tag color="grey">安全提示</Tag>
         <span>API Key 仅用于服务端调用，不要放入浏览器、移动端或代码仓库。</span>
       </div>
-      <CreateApiKeyModal
-        visible={createVisible}
-        applicationId={app.id}
-        applicationName={app.name}
-        loading={createMutation.isPending}
-        onCancel={() => setCreateVisible(false)}
-        onSubmit={submitCreate}
-      />
+      {canManage ? (
+        <CreateApiKeyModal
+          visible={createVisible}
+          applicationId={app.id}
+          applicationName={app.name}
+          loading={createMutation.isPending}
+          onCancel={() => setCreateVisible(false)}
+          onSubmit={submitCreate}
+        />
+      ) : null}
       <OneTimeKeyDialog
         visible={Boolean(revealPayload)}
         payload={revealPayload}
@@ -174,37 +187,41 @@ export function ApiKeysPage() {
           setIsRotation(false);
         }}
       />
-      <ConfirmDangerModal
-        visible={Boolean(revokeTarget)}
-        title="撤销这枚 API Key？"
-        description={`撤销后，使用“${revokeTarget?.name ?? ''}”的服务会立即无法通过认证。此操作不可恢复。`}
-        confirmText="确认撤销"
-        loading={revokeMutation.isPending}
-        onCancel={() => setRevokeTarget(null)}
-        onConfirm={(reason) => {
-          if (revokeTarget) {
-            revokeMutation.mutate({ applicationId: app.id, keyId: revokeTarget.id, reason });
-          }
-        }}
-      />
-      <Modal
-        visible={Boolean(rotateTarget)}
-        title="生成新的 API Key？"
-        onCancel={() => setRotateTarget(null)}
-        onOk={() => {
-          if (rotateTarget) rotateMutation.mutate(rotateTarget);
-        }}
-        okText="生成新 Key"
-        cancelText="先不操作"
-        confirmLoading={rotateMutation.isPending}
-      >
-        <div className="rotate-confirm-copy">
-          <Typography.Text>
-            会为“{rotateTarget?.name ?? ''}”生成一枚新的凭证，旧 Key
-            在切换完成前仍然有效。完成切换后，请回到列表手动撤销旧 Key。
-          </Typography.Text>
-        </div>
-      </Modal>
+      {canManage ? (
+        <ConfirmDangerModal
+          visible={Boolean(revokeTarget)}
+          title="撤销这枚 API Key？"
+          description={`撤销后，使用“${revokeTarget?.name ?? ''}”的服务会立即无法通过认证。此操作不可恢复。`}
+          confirmText="确认撤销"
+          loading={revokeMutation.isPending}
+          onCancel={() => setRevokeTarget(null)}
+          onConfirm={(reason) => {
+            if (revokeTarget) {
+              revokeMutation.mutate({ applicationId: app.id, keyId: revokeTarget.id, reason });
+            }
+          }}
+        />
+      ) : null}
+      {canManage ? (
+        <Modal
+          visible={Boolean(rotateTarget)}
+          title="生成新的 API Key？"
+          onCancel={() => setRotateTarget(null)}
+          onOk={() => {
+            if (rotateTarget) rotateMutation.mutate(rotateTarget);
+          }}
+          okText="生成新 Key"
+          cancelText="先不操作"
+          confirmLoading={rotateMutation.isPending}
+        >
+          <div className="rotate-confirm-copy">
+            <Typography.Text>
+              会为“{rotateTarget?.name ?? ''}”生成一枚新的凭证，旧 Key
+              在切换完成前仍然有效。完成切换后，请回到列表手动撤销旧 Key。
+            </Typography.Text>
+          </div>
+        </Modal>
+      ) : null}
     </div>
   );
 }

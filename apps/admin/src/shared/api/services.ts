@@ -23,12 +23,14 @@ import type {
   AiConfiguration,
   AiConfigurationDraftInput,
   AiConfigurationTestResult,
+  AuditEventList,
   ApiKey,
   Application,
   ApplicationUsage,
   CreateApplicationInput,
   CreateKeyInput,
   ListApplicationsParams,
+  ListAuditEventsParams,
   ListRecordsParams,
   ModerationRecord,
   OneTimeApiKey,
@@ -270,3 +272,19 @@ export function createRuleSetService(client: ApiClient) {
 }
 
 export const ruleSetService = createRuleSetService(apiClient);
+
+export function createAuditService(client: ApiClient) {
+  return {
+    list: async (params: ListAuditEventsParams = {}): Promise<AuditEventList> => {
+      const query = new URLSearchParams();
+      if (params.applicationId) query.set('applicationId', params.applicationId);
+      if (params.action) query.set('action', params.action);
+      if (params.from) query.set('from', params.from);
+      if (params.through) query.set('through', params.through);
+      query.set('limit', String(params.limit ?? 100));
+      return client.get<AuditEventList>(`/audit-events?${query.toString()}`);
+    },
+  };
+}
+
+export const auditService = createAuditService(apiClient);

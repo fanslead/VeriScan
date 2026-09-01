@@ -9,8 +9,10 @@ import { EmptyState } from '@/shared/ui/EmptyState';
 import { ErrorState } from '@/shared/ui/ErrorState';
 import { PageIntro } from '@/shared/ui/PageIntro';
 import { StatusBadge } from '@/shared/ui/StatusBadge';
+import { useAdminCapability } from '@/shared/auth/permissions';
 
 export function ApplicationListPage() {
+  const canOperate = useAdminCapability('operate');
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [keyword, setKeyword] = useState(searchParams.get('keyword') ?? '');
@@ -109,18 +111,20 @@ export function ApplicationListPage() {
   return (
     <div className="page-stack">
       <PageIntro
-        eyebrow="APPLICATIONS / WORKSPACE"
+        eyebrow="接入管理 · 应用目录"
         title="应用"
         description="按应用查看调用规模、策略状态与凭证健康度。"
         actions={
-          <Button
-            theme="solid"
-            type="primary"
-            icon={<IconPlus />}
-            onClick={() => navigate('/applications/new')}
-          >
-            创建应用
-          </Button>
+          canOperate ? (
+            <Button
+              theme="solid"
+              type="primary"
+              icon={<IconPlus />}
+              onClick={() => navigate('/applications/new')}
+            >
+              创建应用
+            </Button>
+          ) : undefined
         }
       />
       <Card className="panel table-panel">
@@ -162,8 +166,8 @@ export function ApplicationListPage() {
           <EmptyState
             title="还没有匹配的应用"
             description="换个关键词，或先创建一个新的应用。"
-            actionText="创建应用"
-            onAction={() => navigate('/applications/new')}
+            actionText={canOperate ? '创建应用' : undefined}
+            onAction={canOperate ? () => navigate('/applications/new') : undefined}
           />
         ) : null}
         {query.isSuccess && query.data.items.length > 0 ? (

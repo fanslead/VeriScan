@@ -51,7 +51,7 @@ export function DashboardPage() {
     <div className="page-stack dashboard-page">
       <div className="page-intro dashboard-intro">
         <div>
-          <div className="eyebrow">CALIBRATION DESK / {todayLabel}</div>
+          <div className="eyebrow">今日运行 · {todayLabel}</div>
           <Typography.Title heading={1}>风险态势</Typography.Title>
           <Typography.Text type="tertiary">
             今天的系统判定是否仍然可靠？从这里开始定位。
@@ -113,7 +113,7 @@ export function DashboardPage() {
           title={
             <div className="panel-heading">
               <div>
-                <span className="section-kicker">FLOW / TODAY</span>
+                <span className="section-kicker">今日趋势</span>
                 <h2>审核流量</h2>
               </div>
               {apiMode === 'mock' ? <Tag color="green">实时</Tag> : null}
@@ -131,7 +131,7 @@ export function DashboardPage() {
           title={
             <div className="panel-heading">
               <div>
-                <span className="section-kicker">DECISION TRACE</span>
+                <span className="section-kicker">处理链路</span>
                 <h2>判定轨</h2>
               </div>
               {apiMode === 'mock' ? <span className="panel-meta">过去 24 小时</span> : null}
@@ -159,7 +159,7 @@ export function DashboardPage() {
           title={
             <div className="panel-heading">
               <div>
-                <span className="section-kicker">LATEST / RECORDS</span>
+                <span className="section-kicker">最近更新</span>
                 <h2>最近判定</h2>
               </div>
               <Link to="/records" className="panel-link">

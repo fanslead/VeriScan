@@ -124,14 +124,14 @@ export function ModerationRecordsPage() {
   return (
     <div className="page-stack records-page">
       <PageIntro
-        eyebrow="RECORDS / MACHINE VERDICTS"
+        eyebrow="结果查询 · 机器判定"
         title="审核记录"
         description="查看每一次机器判定的结果、依据与处理时延。这里不生成人工复核任务。"
       />
       <Card className="panel table-panel">
         <div className="table-toolbar">
           <div>
-            <span className="section-kicker">DECISION LOG</span>
+            <span className="section-kicker">全部结果记录</span>
             <Typography.Title heading={4}>全部记录</Typography.Title>
           </div>
           <div className="table-filters">
@@ -139,7 +139,7 @@ export function ModerationRecordsPage() {
               prefix={<IconSearch />}
               value={keyword}
               onChange={setKeyword}
-              placeholder="搜索记录或内容"
+              placeholder="搜索业务 ID 或内容摘要"
               showClear
               aria-label="搜索审核记录"
             />

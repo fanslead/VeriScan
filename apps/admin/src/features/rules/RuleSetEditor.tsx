@@ -1,7 +1,11 @@
 import { useEffect, useMemo, useState, type KeyboardEvent } from 'react';
-import { Button, Input, Modal, Select, Tag, TextArea } from '@douyinfe/semi-ui';
-import { IconDelete, IconPlus } from '@douyinfe/semi-icons';
+import { Button, Checkbox, Input, Modal, Select, Tag, TextArea } from '@douyinfe/semi-ui';
+import { IconChevronDown, IconDelete, IconPlus, IconSearch } from '@douyinfe/semi-icons';
 import type {
+  CombinationRuleDraftInput,
+  RegexRuleDraftInput,
+  RuleAction,
+  RuleNormalizationProfile,
   RuleSet,
   RuleSetDraftInput,
   WordRuleDraftInput,
@@ -10,14 +14,19 @@ import type {
 import {
   createEmptyRule,
   createRuleSetDraft,
+  combinationRulesFromRuleSet,
+  legacyTypeForAction,
   normalizeRuleType,
   parseKeywordLines,
+  regexRulesFromRuleSet,
   ruleActionOptions,
   ruleCategoryOptions,
   ruleIdentity,
   rulesFromRuleSet,
   suspiciousStrengthOptions,
+  universalRuleActionOptions,
 } from './ruleSetFormModel';
+import { AdvancedRuleSections } from './AdvancedRuleSections';
 
 interface RuleSetEditorProps {
   visible: boolean;
@@ -41,8 +50,15 @@ const optionsForCategory = (category: string) =>
     ? ruleCategoryOptions
     : [...ruleCategoryOptions, { value: category, label: '其他分类' }];
 
-const actionMeta = (type: WordRuleType) =>
-  ruleActionOptions.find((item) => item.value === type) ?? ruleActionOptions[1];
+const legacyActionForType = (type: WordRuleType): RuleAction =>
+  type === 'black' ? 'hardReject' : type === 'white' ? 'contextException' : 'riskSignal';
+
+const effectiveAction = (rule: WordRuleDraftInput): RuleAction =>
+  rule.action ?? legacyActionForType(rule.type);
+
+const actionMeta = (rule: WordRuleDraftInput) =>
+  universalRuleActionOptions.find((item) => item.value === effectiveAction(rule)) ??
+  universalRuleActionOptions[1];
 
 export function RuleSetEditor({
   visible,
@@ -53,6 +69,10 @@ export function RuleSetEditor({
 }: RuleSetEditorProps) {
   const [name, setName] = useState('');
   const [rules, setRules] = useState<EditableRule[]>([]);
+  const [regexRules, setRegexRules] = useState<RegexRuleDraftInput[]>([]);
+  const [combinationRules, setCombinationRules] = useState<CombinationRuleDraftInput[]>([]);
+  const [normalizationProfile, setNormalizationProfile] =
+    useState<RuleNormalizationProfile>('default');
   const [errors, setErrors] = useState<string[]>([]);
   const [rowErrors, setRowErrors] = useState<Record<number, string[]>>({});
   const [showBatch, setShowBatch] = useState(false);
@@ -61,11 +81,19 @@ export function RuleSetEditor({
   const [batchCategory, setBatchCategory] = useState('contact');
   const [batchWeight, setBatchWeight] = useState(0.6);
   const [batchErrors, setBatchErrors] = useState<string[]>([]);
+  const [expandedRuleId, setExpandedRuleId] = useState<string | null>(null);
+  const [ruleSearch, setRuleSearch] = useState('');
 
   useEffect(() => {
     if (!visible) return;
     setName(ruleSet?.name ?? '');
-    setRules(rulesFromRuleSet(ruleSet).map(withClientId));
+    const nextRules = rulesFromRuleSet(ruleSet).map(withClientId);
+    setRules(nextRules);
+    setRegexRules(regexRulesFromRuleSet(ruleSet));
+    setCombinationRules(combinationRulesFromRuleSet(ruleSet));
+    setNormalizationProfile(ruleSet?.normalizationProfile ?? 'default');
+    setExpandedRuleId(nextRules[0]?.clientId ?? null);
+    setRuleSearch('');
     setErrors([]);
     setRowErrors({});
     setShowBatch(false);
@@ -75,12 +103,28 @@ export function RuleSetEditor({
 
   const counts = useMemo(
     () =>
-      ruleActionOptions.map((option) => ({
+      universalRuleActionOptions.map((option) => ({
         ...option,
-        count: rules.filter((rule) => rule.type === option.value).length,
+        count: rules.filter((rule) => effectiveAction(rule) === option.value).length,
       })),
     [rules],
   );
+
+  const visibleRules = useMemo(() => {
+    const keyword = ruleSearch.trim().toLocaleUpperCase('zh-CN');
+    return rules
+      .map((rule, index) => ({ rule, index }))
+      .filter(({ rule }) => {
+        if (!keyword) return true;
+        const action = actionMeta(rule);
+        const category = optionsForCategory(rule.category).find(
+          (option) => option.value === rule.category,
+        );
+        return [rule.term, action.label, category?.label ?? rule.category].some((value) =>
+          value.toLocaleUpperCase('zh-CN').includes(keyword),
+        );
+      });
+  }, [ruleSearch, rules]);
 
   const updateRule = (clientId: string, patch: Partial<WordRuleDraftInput>) => {
     setRules((current) =>
@@ -88,10 +132,11 @@ export function RuleSetEditor({
     );
   };
 
-  const changeRuleType = (clientId: string, type: WordRuleType) => {
+  const changeRuleAction = (clientId: string, action: RuleAction) => {
+    const type = legacyTypeForAction(action);
     setRules((current) =>
       current.map((rule) =>
-        rule.clientId === clientId ? { ...normalizeRuleType(rule, type), clientId } : rule,
+        rule.clientId === clientId ? { ...normalizeRuleType(rule, type), action, clientId } : rule,
       ),
     );
   };
@@ -99,32 +144,38 @@ export function RuleSetEditor({
   const moveRuleTypeSelection = (
     event: KeyboardEvent<HTMLButtonElement>,
     clientId: string,
-    currentType: WordRuleType,
+    currentAction: RuleAction,
   ) => {
-    const currentIndex = ruleActionOptions.findIndex((option) => option.value === currentType);
+    const currentIndex = universalRuleActionOptions.findIndex(
+      (option) => option.value === currentAction,
+    );
     let nextIndex: number | undefined;
     if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
-      nextIndex = (currentIndex + 1) % ruleActionOptions.length;
+      nextIndex = (currentIndex + 1) % universalRuleActionOptions.length;
     } else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
-      nextIndex = (currentIndex - 1 + ruleActionOptions.length) % ruleActionOptions.length;
+      nextIndex =
+        (currentIndex - 1 + universalRuleActionOptions.length) % universalRuleActionOptions.length;
     } else if (event.key === 'Home') {
       nextIndex = 0;
     } else if (event.key === 'End') {
-      nextIndex = ruleActionOptions.length - 1;
+      nextIndex = universalRuleActionOptions.length - 1;
     }
     if (nextIndex === undefined) return;
     event.preventDefault();
-    const nextType = ruleActionOptions[nextIndex].value;
-    changeRuleType(clientId, nextType);
+    const nextAction = universalRuleActionOptions[nextIndex].value;
+    changeRuleAction(clientId, nextAction);
     requestAnimationFrame(() => {
       document
-        .querySelector<HTMLButtonElement>(`[data-rule-action="${clientId}-${nextType}"]`)
+        .querySelector<HTMLButtonElement>(`[data-rule-action="${clientId}-${nextAction}"]`)
         ?.focus();
     });
   };
 
   const addRule = () => {
-    setRules((current) => [...current, withClientId(createEmptyRule())]);
+    const nextRule = withClientId(createEmptyRule());
+    setRules((current) => [...current, nextRule]);
+    setExpandedRuleId(nextRule.clientId);
+    setRuleSearch('');
     setTimeout(() => {
       document.querySelector<HTMLElement>('.rule-entry-card:last-of-type input')?.focus();
     });
@@ -149,12 +200,18 @@ export function RuleSetEditor({
       return;
     }
     const weight = batchType === 'black' ? 1 : batchType === 'white' ? 0.1 : batchWeight;
-    setRules((current) => [
-      ...current,
-      ...parsed.terms.map((term) =>
-        withClientId({ term, type: batchType, category: batchCategory, weight }),
-      ),
-    ]);
+    const addedRules = parsed.terms.map((term) =>
+      withClientId({
+        term,
+        type: batchType,
+        action: legacyActionForType(batchType),
+        category: batchCategory,
+        weight,
+      }),
+    );
+    setRules((current) => [...current, ...addedRules]);
+    setExpandedRuleId(addedRules[0]?.clientId ?? null);
+    setRuleSearch('');
     setBatchSource('');
     setBatchErrors([]);
     setShowBatch(false);
@@ -163,12 +220,13 @@ export function RuleSetEditor({
   const submit = () => {
     const draft = createRuleSetDraft(
       name,
-      rules.map((rule) => ({
-        term: rule.term,
-        type: rule.type,
-        category: rule.category,
-        weight: rule.weight,
-      })),
+      rules.map(({ clientId, ...rule }) => {
+        void clientId;
+        return rule;
+      }),
+      normalizationProfile,
+      regexRules,
+      combinationRules,
     );
     setErrors(draft.errors);
     setRowErrors(draft.rowErrors);
@@ -216,8 +274,23 @@ export function RuleSetEditor({
               {item.shortLabel}
             </span>
           ))}
-          <span className="rule-editor__summary-total">共 {rules.length} 条规则</span>
+          <span className="rule-editor__summary-total">
+            共 {rules.length + regexRules.length + combinationRules.length} 条规则
+          </span>
         </div>
+
+        <label className="rule-normalization-option">
+          <Checkbox
+            checked={normalizationProfile === 'traditionalSimplified'}
+            onChange={(event) =>
+              setNormalizationProfile(event.target.checked ? 'traditionalSimplified' : 'default')
+            }
+          />
+          <span>
+            <strong>同时识别常见繁体写法</strong>
+            <small>例如“賭博”和“赌博”按同一个词处理；不影响原文记录。</small>
+          </span>
+        </label>
 
         <div className="rule-editor__toolbar">
           <div>
@@ -233,6 +306,22 @@ export function RuleSetEditor({
             </Button>
           </div>
         </div>
+
+        {rules.length > 4 ? (
+          <div className="rule-editor__search">
+            <Input
+              prefix={<IconSearch />}
+              value={ruleSearch}
+              onChange={setRuleSearch}
+              showClear
+              aria-label="查找规则"
+              placeholder="查找关键词、处理方式或风险分类"
+            />
+            <span>
+              显示 {visibleRules.length} / {rules.length} 条
+            </span>
+          </div>
+        ) : null}
 
         {showBatch ? (
           <section className="rule-batch-panel" aria-label="批量添加关键词">
@@ -301,8 +390,12 @@ export function RuleSetEditor({
         ) : null}
 
         <div className="rule-entry-list">
-          {rules.map((rule, index) => {
-            const action = actionMeta(rule.type);
+          {visibleRules.map(({ rule, index }) => {
+            const action = actionMeta(rule);
+            const expanded = expandedRuleId === rule.clientId;
+            const categoryName =
+              optionsForCategory(rule.category).find((option) => option.value === rule.category)
+                ?.label ?? rule.category;
             const currentStrength = suspiciousStrengthOptions.some(
               (item) => item.value === rule.weight,
             )
@@ -322,99 +415,125 @@ export function RuleSetEditor({
                   </span>
                   <div>
                     <strong>{rule.term.trim() || '未填写关键词'}</strong>
-                    <span>{action.label}</span>
+                    <span>
+                      {action.label} · {categoryName}
+                    </span>
                   </div>
+                  <Button
+                    theme="borderless"
+                    type="tertiary"
+                    icon={
+                      <IconChevronDown
+                        className={expanded ? 'rule-chevron is-open' : 'rule-chevron'}
+                      />
+                    }
+                    aria-expanded={expanded}
+                    onClick={() => setExpandedRuleId(expanded ? null : rule.clientId)}
+                  >
+                    {expanded ? '收起' : '编辑'}
+                  </Button>
                   <Button
                     type="danger"
                     theme="borderless"
                     icon={<IconDelete />}
                     aria-label={`删除第 ${index + 1} 条规则`}
-                    onClick={() => setRules((current) => current.filter((item) => item !== rule))}
+                    onClick={() => {
+                      setRules((current) => current.filter((item) => item !== rule));
+                      if (expanded) setExpandedRuleId(null);
+                    }}
                   />
                 </div>
 
-                <div className="rule-entry-card__body">
-                  <label className="form-field rule-entry-card__term">
-                    <span>关键词或短语</span>
-                    <Input
-                      value={rule.term}
-                      maxLength={200}
-                      placeholder="例如：加微信"
-                      onChange={(term) => updateRule(rule.clientId, { term })}
-                    />
-                  </label>
-
-                  <div className="rule-action-picker" role="radiogroup" aria-label="命中后如何处理">
-                    <span>命中后如何处理</span>
-                    <div>
-                      {ruleActionOptions.map((option) => (
-                        <button
-                          key={option.value}
-                          type="button"
-                          role="radio"
-                          aria-checked={rule.type === option.value}
-                          tabIndex={rule.type === option.value ? 0 : -1}
-                          data-rule-action={`${rule.clientId}-${option.value}`}
-                          className={rule.type === option.value ? 'is-selected' : ''}
-                          onClick={() => changeRuleType(rule.clientId, option.value)}
-                          onKeyDown={(event) =>
-                            moveRuleTypeSelection(event, rule.clientId, option.value)
-                          }
-                        >
-                          <strong>{option.label}</strong>
-                          <small>{option.description}</small>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="rule-entry-card__settings">
-                    <label className="form-field">
-                      <span id={`${rule.clientId}-category-label`}>风险分类</span>
-                      <Select
-                        aria-labelledby={`${rule.clientId}-category-label`}
-                        value={rule.category}
-                        optionList={optionsForCategory(rule.category)}
-                        onChange={(value) => updateRule(rule.clientId, { category: String(value) })}
+                {expanded ? (
+                  <div className="rule-entry-card__body">
+                    <label className="form-field rule-entry-card__term">
+                      <span>关键词或短语</span>
+                      <Input
+                        value={rule.term}
+                        maxLength={200}
+                        placeholder="例如：加微信"
+                        onChange={(term) => updateRule(rule.clientId, { term })}
                       />
                     </label>
-                    {rule.type === 'suspicious' ? (
-                      <label className="form-field">
-                        <span id={`${rule.clientId}-strength-label`}>关注程度</span>
-                        <Select
-                          aria-labelledby={`${rule.clientId}-strength-label`}
-                          value={rule.weight}
-                          optionList={currentStrength.map((item) => ({
-                            value: item.value,
-                            label: item.label,
-                          }))}
-                          onChange={(value) => updateRule(rule.clientId, { weight: Number(value) })}
-                        />
-                        <small>
-                          {currentStrength.find((item) => item.value === rule.weight)?.hint}
-                        </small>
-                      </label>
-                    ) : (
-                      <div className="rule-fixed-setting">
-                        <span>{rule.type === 'black' ? '明确违规' : '仅作例外'}</span>
-                        <small>
-                          {rule.type === 'black'
-                            ? '直接拦截，无需再设置关注程度。'
-                            : '不会直接放行，仅影响同分类判断。'}
-                        </small>
+
+                    <div
+                      className="rule-action-picker"
+                      role="radiogroup"
+                      aria-label="命中后如何处理"
+                    >
+                      <span>命中后如何处理</span>
+                      <div>
+                        {universalRuleActionOptions.map((option) => (
+                          <button
+                            key={option.value}
+                            type="button"
+                            role="radio"
+                            aria-checked={effectiveAction(rule) === option.value}
+                            tabIndex={effectiveAction(rule) === option.value ? 0 : -1}
+                            data-rule-action={`${rule.clientId}-${option.value}`}
+                            className={effectiveAction(rule) === option.value ? 'is-selected' : ''}
+                            onClick={() => changeRuleAction(rule.clientId, option.value)}
+                            onKeyDown={(event) =>
+                              moveRuleTypeSelection(event, rule.clientId, option.value)
+                            }
+                          >
+                            <strong>{option.label}</strong>
+                            <small>{option.description}</small>
+                          </button>
+                        ))}
                       </div>
-                    )}
+                    </div>
+
+                    <div className="rule-entry-card__settings">
+                      <label className="form-field">
+                        <span id={`${rule.clientId}-category-label`}>风险分类</span>
+                        <Select
+                          aria-labelledby={`${rule.clientId}-category-label`}
+                          value={rule.category}
+                          optionList={optionsForCategory(rule.category)}
+                          onChange={(value) =>
+                            updateRule(rule.clientId, { category: String(value) })
+                          }
+                        />
+                      </label>
+                      {effectiveAction(rule) === 'riskSignal' ? (
+                        <label className="form-field">
+                          <span id={`${rule.clientId}-strength-label`}>关注程度</span>
+                          <Select
+                            aria-labelledby={`${rule.clientId}-strength-label`}
+                            value={rule.weight}
+                            optionList={currentStrength.map((item) => ({
+                              value: item.value,
+                              label: item.label,
+                            }))}
+                            onChange={(value) =>
+                              updateRule(rule.clientId, { weight: Number(value) })
+                            }
+                          />
+                          <small>
+                            {currentStrength.find((item) => item.value === rule.weight)?.hint}
+                          </small>
+                        </label>
+                      ) : (
+                        <div className="rule-fixed-setting">
+                          <span>{action.label}</span>
+                          <small>{action.description}，无需再设置关注程度。</small>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
+                ) : null}
 
-                <div className="rule-decision-preview">
-                  <span>结果预览</span>
-                  <strong>命中“{rule.term.trim() || '这个关键词'}”</strong>
-                  <i aria-hidden="true">→</i>
-                  <strong>{action.preview}</strong>
-                </div>
+                {expanded ? (
+                  <div className="rule-decision-preview">
+                    <span>结果预览</span>
+                    <strong>命中“{rule.term.trim() || '这个关键词'}”</strong>
+                    <i aria-hidden="true">→</i>
+                    <strong>{action.preview}</strong>
+                  </div>
+                ) : null}
 
-                {rowErrors[index]?.length ? (
+                {expanded && rowErrors[index]?.length ? (
                   <div className="rule-entry-card__errors" role="alert">
                     {rowErrors[index].map((error) => (
                       <span key={error}>{error}</span>
@@ -426,6 +545,14 @@ export function RuleSetEditor({
           })}
         </div>
 
+        {rules.length > 0 && visibleRules.length === 0 ? (
+          <div className="rule-editor__no-result">
+            <strong>没有找到匹配的规则</strong>
+            <span>换一个关键词，或清除搜索后继续编辑。</span>
+            <Button onClick={() => setRuleSearch('')}>清除搜索</Button>
+          </div>
+        ) : null}
+
         {rules.length === 0 ? (
           <button className="rule-editor__empty" type="button" onClick={addRule}>
             <IconPlus />
@@ -433,6 +560,13 @@ export function RuleSetEditor({
             <span>从一个关键词开始，随后选择系统的处理方式。</span>
           </button>
         ) : null}
+
+        <AdvancedRuleSections
+          regexRules={regexRules}
+          combinationRules={combinationRules}
+          onRegexRulesChange={setRegexRules}
+          onCombinationRulesChange={setCombinationRules}
+        />
 
         {errors.length > 0 ? (
           <div className="rule-editor__errors" role="alert">

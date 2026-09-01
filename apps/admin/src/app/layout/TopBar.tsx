@@ -4,6 +4,7 @@ import { IconBell, IconChevronDown, IconMenu, IconPlus } from '@douyinfe/semi-ic
 import { Button, Dropdown, Tooltip } from '@douyinfe/semi-ui';
 import { useAuthStore } from '@/shared/auth/authStore';
 import { isMockMode } from '@/shared/auth/oidc';
+import { hasAdminCapability } from '@/shared/auth/permissions';
 
 export function TopBar({ onMenu }: { onMenu: () => void }) {
   const location = useLocation();
@@ -13,15 +14,18 @@ export function TopBar({ onMenu }: { onMenu: () => void }) {
   const user = useAuthStore((state) => state.user);
   const logout = useAuthStore((state) => state.logout);
   const profile = user?.profile as Record<string, unknown> | undefined;
+  const canOperate = hasAdminCapability(user, 'operate');
   const profileName = isMockMode
     ? '林默'
     : String(profile?.preferred_username ?? profile?.name ?? '已登录用户');
   const crumbs = useMemo(() => {
     if (location.pathname.startsWith('/applications/new')) return ['应用', '创建应用'];
     if (location.pathname.startsWith('/applications/')) return ['应用', '应用详情'];
+    if (location.pathname === '/applications') return ['应用'];
     if (location.pathname.startsWith('/records')) return ['审核记录'];
     if (location.pathname.startsWith('/ai-settings')) return ['AI 配置'];
     if (location.pathname.startsWith('/rules')) return ['规则与词库'];
+    if (location.pathname.startsWith('/audit')) return ['审计日志'];
     return ['总览'];
   }, [location.pathname]);
 
@@ -45,14 +49,16 @@ export function TopBar({ onMenu }: { onMenu: () => void }) {
         </div>
       </div>
       <div className="topbar-actions">
-        <Button
-          theme="borderless"
-          type="tertiary"
-          icon={<IconPlus />}
-          onClick={() => navigate('/applications/new')}
-        >
-          新建应用
-        </Button>
+        {canOperate ? (
+          <Button
+            theme="borderless"
+            type="tertiary"
+            icon={<IconPlus />}
+            onClick={() => navigate('/applications/new')}
+          >
+            新建应用
+          </Button>
+        ) : null}
         {isMockMode ? (
           <Dropdown
             trigger="click"

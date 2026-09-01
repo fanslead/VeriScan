@@ -10,6 +10,7 @@ import {
 } from '@douyinfe/semi-icons';
 import { useUiStore } from '@/shared/state/uiStore';
 import { isMockMode } from '@/shared/auth/oidc';
+import { useAdminCapability } from '@/shared/auth/permissions';
 
 const primaryNavigation = [
   { label: '总览', to: '/', icon: <IconHome size="default" /> },
@@ -54,6 +55,11 @@ function NavGroup({
 export function Sidebar({ mobileOpen, onClose }: { mobileOpen: boolean; onClose: () => void }) {
   const collapsed = useUiStore((state) => state.sidebarCollapsed);
   const toggleSidebar = useUiStore((state) => state.toggleSidebar);
+  const canView = useAdminCapability('view');
+  const canAudit = useAdminCapability('audit');
+  const governanceNavigation = canAudit
+    ? [...systemNavigation, { label: '审计日志', to: '/audit', icon: <IconFile size="default" /> }]
+    : systemNavigation;
 
   return (
     <>
@@ -91,8 +97,12 @@ export function Sidebar({ mobileOpen, onClose }: { mobileOpen: boolean; onClose:
         </div>
 
         <nav className="nav-groups">
-          <NavGroup label="工作台" items={primaryNavigation} onNavigate={onClose} />
-          <NavGroup label="治理" items={systemNavigation} onNavigate={onClose} />
+          {canView ? (
+            <>
+              <NavGroup label="工作台" items={primaryNavigation} onNavigate={onClose} />
+              <NavGroup label="治理" items={governanceNavigation} onNavigate={onClose} />
+            </>
+          ) : null}
         </nav>
 
         <div className="sidebar-footer">

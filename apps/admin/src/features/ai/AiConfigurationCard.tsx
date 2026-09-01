@@ -12,6 +12,8 @@ import {
 interface AiConfigurationCardProps {
   configuration: AiConfiguration;
   busy?: boolean;
+  canEdit: boolean;
+  canPublish: boolean;
   onEdit: (configuration: AiConfiguration) => void;
   onTest: (configuration: AiConfiguration) => void;
   onCreateRevision: (configuration: AiConfiguration) => void;
@@ -23,6 +25,8 @@ interface AiConfigurationCardProps {
 export function AiConfigurationCard({
   configuration,
   busy = false,
+  canEdit,
+  canPublish: mayPublish,
   onEdit,
   onTest,
   onCreateRevision,
@@ -142,7 +146,7 @@ export function AiConfigurationCard({
       ) : null}
 
       <div className="ai-config-card__actions" aria-label={`${configuration.name} 操作`}>
-        {configuration.status === 'draft' ? (
+        {canEdit && configuration.status === 'draft' ? (
           <Button
             theme="borderless"
             type="tertiary"
@@ -152,7 +156,7 @@ export function AiConfigurationCard({
             编辑草稿
           </Button>
         ) : null}
-        {configuration.status !== 'draft' ? (
+        {canEdit && configuration.status !== 'draft' ? (
           <Button
             theme="borderless"
             type="tertiary"
@@ -162,7 +166,7 @@ export function AiConfigurationCard({
             创建新版本
           </Button>
         ) : null}
-        {configuration.status !== 'archived' ? (
+        {canEdit && configuration.status !== 'archived' ? (
           <Button
             theme="borderless"
             type="tertiary"
@@ -172,7 +176,7 @@ export function AiConfigurationCard({
             合成测试
           </Button>
         ) : null}
-        {configuration.status === 'draft' ? (
+        {mayPublish && configuration.status === 'draft' ? (
           <Button
             theme="solid"
             type="primary"
@@ -184,7 +188,7 @@ export function AiConfigurationCard({
             发布版本
           </Button>
         ) : null}
-        {configuration.status === 'published' && !configuration.isActive ? (
+        {mayPublish && configuration.status === 'published' && !configuration.isActive ? (
           <Button
             theme="solid"
             type="primary"
@@ -194,7 +198,7 @@ export function AiConfigurationCard({
             激活路由
           </Button>
         ) : null}
-        {configuration.status !== 'archived' ? (
+        {mayPublish && configuration.status !== 'archived' ? (
           <Button
             type="danger"
             theme="borderless"

@@ -35,6 +35,7 @@ export function AiConfigurationEditor({
   const formRef = useRef<HTMLFormElement>(null);
   const [values, setValues] = useState<AiConfigurationDraftInput>(createInitialValues);
   const [touched, setTouched] = useState<Partial<Record<FieldKey, boolean>>>({});
+  const [advancedOpen, setAdvancedOpen] = useState(false);
 
   useEffect(() => {
     if (!visible) {
@@ -43,6 +44,7 @@ export function AiConfigurationEditor({
     }
     setValues(configuration ? toDraftValues(configuration) : createInitialValues());
     setTouched({});
+    setAdvancedOpen(false);
     if (formRef.current) formRef.current.scrollTop = 0;
   }, [configuration, visible]);
 
@@ -111,7 +113,21 @@ export function AiConfigurationEditor({
       dataRegion: true,
       retentionClass: true,
     });
-    if (Object.keys(errors).length > 0) return;
+    if (Object.keys(errors).length > 0) {
+      const advancedFields: FieldKey[] = [
+        'systemPrompt',
+        'decodingMode',
+        'maxInputTokens',
+        'maxOutputTokens',
+        'connectTimeoutMs',
+        'requestTimeoutMs',
+        'maxAttempts',
+        'dataRegion',
+        'retentionClass',
+      ];
+      if (advancedFields.some((field) => errors[field])) setAdvancedOpen(true);
+      return;
+    }
     onSubmit({
       ...values,
       name: values.name.trim(),
@@ -161,7 +177,7 @@ export function AiConfigurationEditor({
       >
         <div className="ai-config-form__lead">
           <div>
-            <span className="section-kicker">MODEL ROUTING / DRAFT</span>
+            <span className="section-kicker">模型服务草稿</span>
             <strong>{configuration ? '只修改草稿内容' : '先保存，再测试与发布'}</strong>
             <p>
               {configuration
@@ -177,8 +193,18 @@ export function AiConfigurationEditor({
         </div>
         <RouteIdentitySection {...sectionProps} onProtocolChange={changeProtocol} />
         <ConnectionSection {...sectionProps} />
-        <DecisionPolicySection {...sectionProps} />
-        <LimitsSection {...sectionProps} />
+        <details
+          className="ai-config-options"
+          open={advancedOpen}
+          onToggle={(event) => setAdvancedOpen(event.currentTarget.open)}
+        >
+          <summary>
+            <span>更多判定与容量设置</span>
+            <small>默认值适合多数场景，需要调整提示词、超时或数据策略时再展开。</small>
+          </summary>
+          <DecisionPolicySection {...sectionProps} />
+          <LimitsSection {...sectionProps} />
+        </details>
       </form>
     </Modal>
   );

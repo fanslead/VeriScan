@@ -34,9 +34,25 @@ export function RouteIdentitySection({
   return (
     <section className="ai-config-form__section">
       <div className="ai-config-form__section-head">
-        <span className="section-kicker">ROUTE IDENTITY</span>
-        <h2>路由身份</h2>
-        <p>协议会自动带出常用入口；如果使用自建网关，仍可以按实际情况修改。</p>
+        <span className="section-kicker">选择模型服务</span>
+        <h2>你准备连接哪一种服务？</h2>
+        <p>选择后会自动填写常用地址和请求方式，自建兼容服务也可以继续修改。</p>
+      </div>
+      <div className="ai-provider-picker" role="radiogroup" aria-label="模型服务接入方式">
+        {protocolOptions.map((item) => (
+          <button
+            type="button"
+            role="radio"
+            aria-checked={values.protocol === item.value}
+            className={values.protocol === item.value ? 'is-selected' : ''}
+            key={item.value}
+            onClick={() => onProtocolChange(item.value)}
+          >
+            <span>{item.shortLabel}</span>
+            <strong>{item.label}</strong>
+            <small>{item.hint}</small>
+          </button>
+        ))}
       </div>
       <div className="ai-config-form__grid ai-config-form__grid--two">
         <label className="form-field">
@@ -47,7 +63,7 @@ export function RouteIdentitySection({
             value={values.name}
             onChange={(value) => update('name', value)}
             onBlur={() => markTouched('name')}
-            placeholder="例如：主路由 · OpenAI"
+            placeholder="例如：生产环境主模型"
             maxLength={100}
             aria-invalid={Boolean(error('name'))}
           />
@@ -55,30 +71,20 @@ export function RouteIdentitySection({
         </label>
         <label className="form-field">
           <span>
-            接口协议 <i>*</i>
+            模型名称 <i>*</i>
           </span>
-          <Select
-            value={values.protocol}
-            onChange={(value) => onProtocolChange(value as AiProtocol)}
-            optionList={protocolOptions.map((item) => ({ value: item.value, label: item.label }))}
+          <Input
+            value={values.model}
+            onChange={(value) => update('model', value)}
+            onBlur={() => markTouched('model')}
+            placeholder="填写服务商提供的模型名称"
+            maxLength={200}
+            aria-invalid={Boolean(error('model'))}
           />
+          {error('model') ? <small className="field-error">{error('model')}</small> : null}
           <small className="field-hint">{protocol.hint}</small>
         </label>
       </div>
-      <label className="form-field">
-        <span>
-          模型名称 <i>*</i>
-        </span>
-        <Input
-          value={values.model}
-          onChange={(value) => update('model', value)}
-          onBlur={() => markTouched('model')}
-          placeholder="例如：gpt-4o-mini"
-          maxLength={200}
-          aria-invalid={Boolean(error('model'))}
-        />
-        {error('model') ? <small className="field-error">{error('model')}</small> : null}
-      </label>
     </section>
   );
 }
@@ -106,11 +112,11 @@ export function ConnectionSection({
   return (
     <section className="ai-config-form__section">
       <div className="ai-config-form__section-head">
-        <span className="section-kicker">CONNECTION</span>
+        <span className="section-kicker">连接与密钥</span>
         <h2>连接入口</h2>
         <p>在这里填写模型服务地址和 API 密钥；密钥保存后只显示配置状态，不会再次回显。</p>
       </div>
-      <div className="ai-config-form__grid ai-config-form__grid--wide">
+      <div className="ai-config-form__grid ai-config-form__grid--two">
         <label className="form-field">
           <span>
             服务基础地址 <i>*</i>
@@ -123,35 +129,6 @@ export function ConnectionSection({
             aria-invalid={Boolean(error('baseUrl'))}
           />
           {error('baseUrl') ? <small className="field-error">{error('baseUrl')}</small> : null}
-        </label>
-        <label className="form-field">
-          <span>
-            请求路径 <i>*</i>
-          </span>
-          <Input
-            value={values.endpointPath}
-            onChange={(value) => update('endpointPath', value)}
-            onBlur={() => markTouched('endpointPath')}
-            placeholder="/v1/chat/completions"
-            aria-invalid={Boolean(error('endpointPath'))}
-          />
-          {error('endpointPath') ? (
-            <small className="field-error">{error('endpointPath')}</small>
-          ) : null}
-        </label>
-      </div>
-      <div className="ai-config-form__grid ai-config-form__grid--four">
-        <label className="form-field">
-          <span>
-            认证方式 <i>*</i>
-          </span>
-          <Select
-            value={values.authScheme}
-            onChange={(value) =>
-              update('authScheme', value as AiConfigurationDraftInput['authScheme'])
-            }
-            optionList={authSchemeOptions}
-          />
         </label>
         <label className="form-field">
           <span>
@@ -175,42 +152,70 @@ export function ConnectionSection({
                 : '新配置需要填写模型服务的 API 密钥。'}
           </small>
         </label>
-        <label className="form-field">
-          <span>服务商版本</span>
-          <Input
-            value={values.apiVersion ?? ''}
-            onChange={updateApiVersion}
-            onBlur={() => markTouched('apiVersion')}
-            placeholder={values.protocol === 'anthropicMessages' ? '2023-06-01' : '可留空'}
-            aria-invalid={Boolean(error('apiVersion'))}
-          />
-          {error('apiVersion') ? (
-            <small className="field-error">{error('apiVersion')}</small>
-          ) : null}
-        </label>
-        <label className="form-field">
-          <span>
-            版本发送位置 <i>*</i>
-          </span>
-          <Select
-            value={values.apiVersionLocation}
-            onChange={(value) => update('apiVersionLocation', value as AiApiVersionLocation)}
-            optionList={locationOptions}
-          />
-          <small className="field-hint">
-            {values.protocol === 'anthropicMessages'
-              ? 'Messages 仅允许使用受控 Header。'
-              : 'OpenAI / Azure 兼容服务可选择固定 Query 参数。'}
-          </small>
-          {error('apiVersionLocation') ? (
-            <small className="field-error">{error('apiVersionLocation')}</small>
-          ) : null}
-        </label>
       </div>
       <div className="ai-config-secure-note">
         <strong>{authSchemeLabel(values.authScheme)} · 加密保存</strong>
         <span>密钥只随保存请求提交一次，服务端加密入库，列表和详情接口均不会返回。</span>
       </div>
+      <details className="ai-config-advanced">
+        <summary>高级连接设置</summary>
+        <p>使用服务商默认配置时无需修改；自建网关或 Azure 兼容服务可在这里调整。</p>
+        <div className="ai-config-form__grid ai-config-form__grid--four">
+          <label className="form-field">
+            <span>
+              请求路径 <i>*</i>
+            </span>
+            <Input
+              value={values.endpointPath}
+              onChange={(value) => update('endpointPath', value)}
+              onBlur={() => markTouched('endpointPath')}
+              placeholder="/v1/chat/completions"
+              aria-invalid={Boolean(error('endpointPath'))}
+            />
+            {error('endpointPath') ? (
+              <small className="field-error">{error('endpointPath')}</small>
+            ) : null}
+          </label>
+          <label className="form-field">
+            <span>
+              认证方式 <i>*</i>
+            </span>
+            <Select
+              value={values.authScheme}
+              onChange={(value) =>
+                update('authScheme', value as AiConfigurationDraftInput['authScheme'])
+              }
+              optionList={authSchemeOptions}
+            />
+          </label>
+          <label className="form-field">
+            <span>服务商版本</span>
+            <Input
+              value={values.apiVersion ?? ''}
+              onChange={updateApiVersion}
+              onBlur={() => markTouched('apiVersion')}
+              placeholder={values.protocol === 'anthropicMessages' ? '2023-06-01' : '可留空'}
+              aria-invalid={Boolean(error('apiVersion'))}
+            />
+            {error('apiVersion') ? (
+              <small className="field-error">{error('apiVersion')}</small>
+            ) : null}
+          </label>
+          <label className="form-field">
+            <span>
+              版本发送位置 <i>*</i>
+            </span>
+            <Select
+              value={values.apiVersionLocation}
+              onChange={(value) => update('apiVersionLocation', value as AiApiVersionLocation)}
+              optionList={locationOptions}
+            />
+            {error('apiVersionLocation') ? (
+              <small className="field-error">{error('apiVersionLocation')}</small>
+            ) : null}
+          </label>
+        </div>
+      </details>
     </section>
   );
 }
@@ -224,7 +229,7 @@ export function DecisionPolicySection({
   return (
     <section className="ai-config-form__section">
       <div className="ai-config-form__section-head">
-        <span className="section-kicker">DECISION POLICY</span>
+        <span className="section-kicker">判定方式</span>
         <h2>判定策略</h2>
         <p>明确模型输出边界，便于审核记录保留稳定、可解释的结果。</p>
       </div>
@@ -286,7 +291,7 @@ export function LimitsSection({
   return (
     <section className="ai-config-form__section ai-config-form__section--last">
       <div className="ai-config-form__section-head">
-        <span className="section-kicker">LIMITS &amp; RETENTION</span>
+        <span className="section-kicker">容量与数据策略</span>
         <h2>容量与合规</h2>
         <p>这些边界会随版本冻结，并写入审核链路的运行上下文。</p>
       </div>

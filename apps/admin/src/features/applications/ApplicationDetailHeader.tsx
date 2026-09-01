@@ -26,7 +26,7 @@ export function ApplicationDetailHeader({
         <div className="detail-hero__identity">
           <span className="detail-avatar">{application.name.slice(0, 1)}</span>
           <div>
-            <div className="eyebrow">APPLICATION / {application.slug}</div>
+            <div className="eyebrow">应用详情 · {application.slug}</div>
             <Typography.Title heading={1}>{application.name}</Typography.Title>
             <Typography.Text type="tertiary">
               {application.description || '暂无应用说明'} ·{' '}

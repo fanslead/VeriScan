@@ -5,11 +5,12 @@ import { formatDate } from '@/shared/ui/formatDate';
 
 interface ApiKeysTableProps {
   rows: ApiKey[];
+  canManage: boolean;
   onRotate: (key: ApiKey) => void;
   onRevoke: (key: ApiKey) => void;
 }
 
-export function ApiKeysTable({ rows, onRotate, onRevoke }: ApiKeysTableProps) {
+export function ApiKeysTable({ rows, canManage, onRotate, onRevoke }: ApiKeysTableProps) {
   const columns = [
     {
       title: '凭证',
@@ -85,7 +86,7 @@ export function ApiKeysTable({ rows, onRotate, onRevoke }: ApiKeysTableProps) {
       dataIndex: 'id',
       align: 'right' as const,
       render: (_: unknown, record: ApiKey) =>
-        record.status === 'active' ? (
+        record.status === 'active' && canManage ? (
           <div className="table-actions">
             <Button
               theme="borderless"

@@ -9,6 +9,7 @@ import { ErrorState } from '@/shared/ui/ErrorState';
 import { PageIntro } from '@/shared/ui/PageIntro';
 import { RuleSetEditor } from './RuleSetEditor';
 import { ruleCategoryOptions } from './ruleSetFormModel';
+import { useAdminCapability } from '@/shared/auth/permissions';
 
 const statusMeta = {
   draft: { label: '草稿', color: 'amber' as const },
@@ -30,6 +31,8 @@ const categoryLabel = (category: string) =>
   ruleCategoryOptions.find((item) => item.value === category)?.label ?? '其他分类';
 
 export function RuleSetsPage() {
+  const canEdit = useAdminCapability('editRules');
+  const canPublish = useAdminCapability('publish');
   const [searchParams] = useSearchParams();
   const applicationId = searchParams.get('applicationId') ?? '';
   const queryClient = useQueryClient();
@@ -139,21 +142,23 @@ export function RuleSetsPage() {
   return (
     <div className="page-stack rule-set-page">
       <PageIntro
-        eyebrow="GOVERNANCE / POLICY LIBRARY"
+        eyebrow="内容治理 · 规则版本"
         title="规则与词库"
         description="维护可校验、可追溯、按应用绑定的不可变规则版本。"
         actions={
-          <Button
-            type="primary"
-            theme="solid"
-            icon={<IconPlus />}
-            onClick={() => {
-              setEditorRuleSet(null);
-              setEditorVisible(true);
-            }}
-          >
-            新建草稿
-          </Button>
+          canEdit ? (
+            <Button
+              type="primary"
+              theme="solid"
+              icon={<IconPlus />}
+              onClick={() => {
+                setEditorRuleSet(null);
+                setEditorVisible(true);
+              }}
+            >
+              新建草稿
+            </Button>
+          ) : undefined
         }
       />
 
@@ -163,7 +168,7 @@ export function RuleSetsPage() {
             <IconShield />
           </div>
           <div>
-            <span className="section-kicker">APPLICATION BINDING</span>
+            <span className="section-kicker">当前应用规则</span>
             <strong>{application.data?.name ?? '正在读取应用…'}</strong>
             <small>当前版本：{application.data?.policyVersion ?? '未绑定'}</small>
           </div>
@@ -206,7 +211,7 @@ export function RuleSetsPage() {
                     </div>
                   </div>
                   <div className="rule-set-card__actions">
-                    {ruleSet.status === 'draft' ? (
+                    {ruleSet.status === 'draft' && canEdit ? (
                       <>
                         <Button onClick={() => validate.mutate(ruleSet.id)}>校验</Button>
                         <Button
@@ -215,22 +220,26 @@ export function RuleSetsPage() {
                         >
                           编辑
                         </Button>
-                        <Button
-                          type="primary"
-                          theme="solid"
-                          onClick={() => confirmPublish(ruleSet)}
-                        >
-                          发布
-                        </Button>
+                        {canPublish ? (
+                          <Button
+                            type="primary"
+                            theme="solid"
+                            onClick={() => confirmPublish(ruleSet)}
+                          >
+                            发布
+                          </Button>
+                        ) : null}
                       </>
-                    ) : (
+                    ) : ruleSet.status !== 'draft' && canEdit ? (
                       <>
                         <Button
                           onClick={() => lifecycle.mutate({ id: ruleSet.id, action: 'revision' })}
                         >
                           创建新版本
                         </Button>
-                        {ruleSet.status === 'published' && ruleSet.applicationCount === 0 ? (
+                        {canPublish &&
+                        ruleSet.status === 'published' &&
+                        ruleSet.applicationCount === 0 ? (
                           <Button
                             type="danger"
                             theme="borderless"
@@ -240,8 +249,8 @@ export function RuleSetsPage() {
                           </Button>
                         ) : null}
                       </>
-                    )}
-                    {applicationId && ruleSet.status === 'published' && !isBound ? (
+                    ) : null}
+                    {canEdit && applicationId && ruleSet.status === 'published' && !isBound ? (
                       <Button
                         type="primary"
                         theme="solid"
@@ -282,6 +291,20 @@ export function RuleSetsPage() {
                       {rule.term} · {categoryLabel(rule.category)}
                     </Tag>
                   ))}
+                  {ruleSet.regexRules
+                    .slice(0, Math.max(0, 8 - ruleSet.rules.length))
+                    .map((rule) => (
+                      <Tag key={rule.id} color="cyan">
+                        格式识别 · {categoryLabel(rule.category)}
+                      </Tag>
+                    ))}
+                  {ruleSet.combinationRules
+                    .slice(0, Math.max(0, 8 - ruleSet.rules.length - ruleSet.regexRules.length))
+                    .map((rule) => (
+                      <Tag key={rule.id} color="amber">
+                        {rule.name} · 组合条件
+                      </Tag>
+                    ))}
                   {ruleSet.ruleCount > 8 ? <span>另有 {ruleSet.ruleCount - 8} 条</span> : null}
                 </div>
                 {issues.length > 0 ? (

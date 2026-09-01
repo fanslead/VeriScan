@@ -10,5 +10,6 @@
 @import './settings.css';
 @import './rule-sets.css';
 @import './ai-settings.css';
+@import './audit.css';
 @import './component-overrides.css';
 @import './responsive.css';
