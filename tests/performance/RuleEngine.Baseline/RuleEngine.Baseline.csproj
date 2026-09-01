@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>VeriScan.RuleEngine.Baseline</AssemblyName>
+    <RootNamespace>VeriScan.RuleEngine.Baseline</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../../apps/api/Application/Application.csproj" />
+    <ProjectReference Include="../../../apps/api/Domain/Domain.csproj" />
+  </ItemGroup>
+</Project>

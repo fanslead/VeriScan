@@ -10,6 +10,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using VeriScan.Api.Authentication;
 using VeriScan.Application.Abstractions;
+using VeriScan.Application.Services;
 using VeriScan.Domain.Entities;
 using VeriScan.Infrastructure.Persistence;
 
@@ -82,7 +83,6 @@ public sealed class ApiTestFactory : WebApplicationFactory<Program>
             return;
         }
 
-        const string seedChecksum = "1c50d51e094417fde15460aa39a1ed681e4836475f68651af8fe36a887eaf092";
         var ruleSet = new RuleSetVersion("测试基础规则");
         ruleSet.ReplaceDraft(
             ruleSet.Name,
@@ -91,6 +91,7 @@ public sealed class ApiTestFactory : WebApplicationFactory<Program>
                 new WordRule(ruleSet.Id, "加微信", WordRuleType.Suspicious, "contact", 0.6m),
                 new WordRule(ruleSet.Id, "明鉴", WordRuleType.White, "product", 0.1m)
             ]);
+        var seedChecksum = RuleSetPolicyValidator.ComputeChecksum(ruleSet.Name, ruleSet.Rules);
         ruleSet.RecordSuccessfulValidation(seedChecksum, DateTimeOffset.UtcNow);
         ruleSet.Publish(seedChecksum, DateTimeOffset.UtcNow);
         dbContext.RuleSetVersions.Add(ruleSet);

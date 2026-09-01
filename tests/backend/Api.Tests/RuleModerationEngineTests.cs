@@ -38,4 +38,36 @@ public sealed class RuleModerationEngineTests
         Assert.True(result.RequiresAi);
         Assert.Contains("RULE_CONTEXT_EXCEPTION", result.ReasonCodes);
     }
+
+    [Fact]
+    public void CompiledMatcherFindsOverlappingTermsAfterUnicodeNormalization()
+    {
+        var engine = new RuleModerationEngine();
+        var rules = new WordRule[]
+        {
+            new(Guid.Empty, "ＢＡＤ", WordRuleType.Suspicious, "risk", 0.6m),
+            new(Guid.Empty, "ad", WordRuleType.Black, "critical", 1m)
+        };
+
+        var result = engine.GetOrCompile("ruleset@test-overlap", rules).Evaluate("bad");
+
+        Assert.Equal(ModerationDecision.Reject, result.Decision);
+        Assert.Contains(result.Categories, category => category.Code == "critical");
+    }
+
+    [Fact]
+    public void PublishedRevisionReturnsSameCompiledPolicyAcrossCalls()
+    {
+        var engine = new RuleModerationEngine();
+        var rules = new WordRule[]
+        {
+            new(Guid.Empty, "诈骗", WordRuleType.Black, "fraud", 1m)
+        };
+
+        var first = engine.GetOrCompile("ruleset@stable", rules);
+        var second = engine.GetOrCompile("ruleset@stable", []);
+
+        Assert.Same(first, second);
+        Assert.Equal(ModerationDecision.Reject, second.Evaluate("这是诈骗").Decision);
+    }
 }

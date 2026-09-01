@@ -125,6 +125,7 @@ public sealed class ModerationService(
             .Where(rule => rule.IsEnabled)
             .OrderByDescending(rule => rule.Weight)
             .ToArray();
+        var compiledPolicy = ruleModerationEngine.GetOrCompile(ruleSet.PublicRevisionId, rules);
 
         var workItems = request.Items
             .Select(item => new ModerationWorkItem(
@@ -139,7 +140,7 @@ public sealed class ModerationService(
                     item.Language,
                     item.ContentType,
                     submittedAt),
-                ruleModerationEngine.Evaluate(item.Content, rules)))
+                compiledPolicy.Evaluate(item.Content)))
             .ToArray();
 
         await Parallel.ForEachAsync(
