@@ -89,6 +89,93 @@ public sealed class AiModerationRoutingTests
         Assert.Equal(0, aiClient.Calls);
     }
 
+    [Fact]
+    public async Task IdempotentReplayReturnsOriginalResultWithoutCallingAiAgain()
+    {
+        await using var factory = new ApiTestFactory();
+        await factory.SeedRulesAsync();
+        var aiClient = factory.Services.GetRequiredService<IModerationAiClient>() as TestModerationAiClient;
+        Assert.NotNull(aiClient);
+        aiClient.Result = new AiModerationResult(
+            AiModerationOutcome.Succeeded,
+            AiModerationLabel.Safe,
+            ["MODEL_SAFE"],
+            [],
+            [],
+            "ai-model@test",
+            "provider-request-idempotent",
+            21,
+            7,
+            null);
+        using var client = factory.CreateClient();
+        var application = await CreateApplicationAsync(client);
+        var apiKey = await CreateApiKeyAsync(client, application.Id);
+
+        using var firstRequest = CreateModerationRequest(apiKey, "需要 AI 判断的幂等文本");
+        firstRequest.Headers.Add("Idempotency-Key", "moderation-idempotency-0001");
+        var firstResponse = await client.SendAsync(firstRequest);
+        firstResponse.EnsureSuccessStatusCode();
+        var first = await firstResponse.Content.ReadFromJsonAsync<BatchModerationResponse>(JsonOptions);
+
+        using var replayRequest = CreateModerationRequest(apiKey, "需要 AI 判断的幂等文本");
+        replayRequest.Headers.Add("Idempotency-Key", "moderation-idempotency-0001");
+        var replayResponse = await client.SendAsync(replayRequest);
+        replayResponse.EnsureSuccessStatusCode();
+        var replay = await replayResponse.Content.ReadFromJsonAsync<BatchModerationResponse>(JsonOptions);
+
+        Assert.Equal(first!.RequestId, replay!.RequestId);
+        Assert.Equal(1, aiClient.Calls);
+
+        using var conflictRequest = CreateModerationRequest(apiKey, "同一幂等键下的不同文本");
+        conflictRequest.Headers.Add("Idempotency-Key", "moderation-idempotency-0001");
+        var conflictResponse = await client.SendAsync(conflictRequest);
+        Assert.Equal(System.Net.HttpStatusCode.Conflict, conflictResponse.StatusCode);
+        Assert.Equal(1, aiClient.Calls);
+    }
+
+    [Fact]
+    public async Task BatchRunsAiCallsWithConfiguredBoundedConcurrency()
+    {
+        await using var factory = new ApiTestFactory();
+        await factory.SeedRulesAsync();
+        var aiClient = factory.Services.GetRequiredService<IModerationAiClient>() as TestModerationAiClient;
+        Assert.NotNull(aiClient);
+        aiClient.Delay = TimeSpan.FromMilliseconds(60);
+        aiClient.Result = new AiModerationResult(
+            AiModerationOutcome.Succeeded,
+            AiModerationLabel.Safe,
+            ["MODEL_SAFE"],
+            [],
+            [],
+            "ai-model@test",
+            null,
+            12,
+            4,
+            null);
+        using var client = factory.CreateClient();
+        var application = await CreateApplicationAsync(client);
+        var apiKey = await CreateApiKeyAsync(client, application.Id);
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/v1/moderation/batches");
+        request.Headers.Add("X-API-Key", apiKey);
+        request.Content = JsonContent.Create(new
+        {
+            mode = "sync",
+            items = Enumerable.Range(1, 8).Select(index => new
+            {
+                id = $"parallel-{index}",
+                content = $"需要语义判断的普通文本 {index}",
+                contentType = "plain_text"
+            })
+        });
+
+        var response = await client.SendAsync(request);
+        var body = await response.Content.ReadAsStringAsync();
+
+        Assert.True(response.IsSuccessStatusCode, body);
+        Assert.Equal(8, aiClient.Calls);
+        Assert.InRange(aiClient.MaximumConcurrentCalls, 2, 4);
+    }
+
     private static HttpRequestMessage CreateModerationRequest(string apiKey, string content)
     {
         var request = new HttpRequestMessage(HttpMethod.Post, "/api/v1/moderation/batches");

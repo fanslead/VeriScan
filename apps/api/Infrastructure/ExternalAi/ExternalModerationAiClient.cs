@@ -4,7 +4,7 @@ using VeriScan.Domain.Entities;
 namespace VeriScan.Infrastructure.ExternalAi;
 
 public sealed class ExternalModerationAiClient(
-    IAiModelConfigurationStore configurationStore,
+    IActiveAiConfigurationProvider configurationProvider,
     IAiEndpointPolicy endpointPolicy,
     IExternalAiCredentialResolver credentialResolver,
     OpenAiChatCompletionsClient chatCompletionsClient,
@@ -15,7 +15,7 @@ public sealed class ExternalModerationAiClient(
         AiModerationRequest request,
         CancellationToken cancellationToken)
     {
-        var configuration = await configurationStore.GetActiveAsync(cancellationToken);
+        var configuration = await configurationProvider.GetActiveAsync(cancellationToken);
         if (configuration is null)
         {
             return new AiModerationResult(

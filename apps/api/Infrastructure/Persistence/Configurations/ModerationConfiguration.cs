@@ -15,6 +15,9 @@ public sealed class ModerationRequestConfiguration : IEntityTypeConfiguration<Mo
         builder.Property(request => request.RequestFingerprint).HasMaxLength(128);
         builder.Property(request => request.ProcessingStatus).HasConversion<string>().HasMaxLength(32).IsRequired();
         builder.HasIndex(request => new { request.ApplicationId, request.SubmittedAt });
+        builder.HasIndex(request => new { request.ApplicationId, request.IdempotencyKeyDigest })
+            .IsUnique()
+            .HasFilter("\"IdempotencyKeyDigest\" IS NOT NULL");
         builder.HasMany(request => request.Items)
             .WithOne(item => item.Request)
             .HasForeignKey(item => item.RequestId)

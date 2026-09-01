@@ -37,16 +37,53 @@ internal sealed class TestAiConfigurationProbe : IAiConfigurationProbe
 
 internal sealed class TestModerationAiClient : IModerationAiClient
 {
+    private int calls;
+    private int activeCalls;
+    private int maximumConcurrentCalls;
+
     public AiModerationResult Result { get; set; } = NoActiveConfiguration();
 
-    public int Calls { get; private set; }
+    public TimeSpan Delay { get; set; }
 
-    public Task<AiModerationResult> ModerateAsync(
+    public int Calls => Volatile.Read(ref calls);
+
+    public int MaximumConcurrentCalls => Volatile.Read(ref maximumConcurrentCalls);
+
+    public async Task<AiModerationResult> ModerateAsync(
         AiModerationRequest request,
         CancellationToken cancellationToken)
     {
-        Calls++;
-        return Task.FromResult(Result);
+        Interlocked.Increment(ref calls);
+        var active = Interlocked.Increment(ref activeCalls);
+        UpdateMaximum(active);
+        try
+        {
+            if (Delay > TimeSpan.Zero)
+            {
+                await Task.Delay(Delay, cancellationToken);
+            }
+
+            return Result;
+        }
+        finally
+        {
+            Interlocked.Decrement(ref activeCalls);
+        }
+    }
+
+    private void UpdateMaximum(int candidate)
+    {
+        var current = Volatile.Read(ref maximumConcurrentCalls);
+        while (candidate > current)
+        {
+            var observed = Interlocked.CompareExchange(ref maximumConcurrentCalls, candidate, current);
+            if (observed == current)
+            {
+                return;
+            }
+
+            current = observed;
+        }
     }
 
     private static AiModerationResult NoActiveConfiguration()

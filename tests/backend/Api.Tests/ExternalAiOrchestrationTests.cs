@@ -14,7 +14,7 @@ public sealed class ExternalAiOrchestrationTests
     public async Task ModerationClientReturnsNoActiveConfigurationWithoutCallingProvider()
     {
         var handler = new CountingHandler();
-        var client = CreateModerationClient(new FakeConfigurationStore(null), handler);
+        var client = CreateModerationClient(new FakeConfigurationProvider(null), handler);
 
         var result = await client.ModerateAsync(
             new AiModerationRequest(Guid.NewGuid(), Guid.NewGuid(), "待审文本", "zh-CN"),
@@ -30,7 +30,7 @@ public sealed class ExternalAiOrchestrationTests
     {
         var handler = new CountingHandler();
         var client = CreateModerationClient(
-            new FakeConfigurationStore(CreateConfiguration(maxInputTokens: 128)),
+            new FakeConfigurationProvider(CreateConfiguration(maxInputTokens: 128)),
             handler);
 
         var result = await client.ModerateAsync(
@@ -77,11 +77,11 @@ public sealed class ExternalAiOrchestrationTests
     }
 
     private static ExternalModerationAiClient CreateModerationClient(
-        IAiModelConfigurationStore store,
+        IActiveAiConfigurationProvider configurationProvider,
         CountingHandler handler)
     {
         return new ExternalModerationAiClient(
-            store,
+            configurationProvider,
             new PermissiveEndpointPolicy(),
             new FixedCredentialResolver(),
             new OpenAiChatCompletionsClient(new HttpClient(handler), CreateExecutor()),
@@ -179,22 +179,9 @@ public sealed class ExternalAiOrchestrationTests
         }
     }
 
-    private sealed class FakeConfigurationStore(AiModelConfiguration? active) : IAiModelConfigurationStore
+    private sealed class FakeConfigurationProvider(AiModelConfiguration? active)
+        : IActiveAiConfigurationProvider
     {
-        public Task AddAsync(AiModelConfiguration configuration, CancellationToken cancellationToken) => Task.CompletedTask;
-
-        public Task<AiModelConfiguration?> GetByIdAsync(Guid id, CancellationToken cancellationToken) => Task.FromResult(active);
-
         public Task<AiModelConfiguration?> GetActiveAsync(CancellationToken cancellationToken) => Task.FromResult(active);
-
-        public Task ActivateExclusiveAsync(
-            AiModelConfiguration configuration,
-            DateTimeOffset activatedAt,
-            CancellationToken cancellationToken) => Task.CompletedTask;
-
-        public Task<IReadOnlyList<AiModelConfiguration>> ListAsync(CancellationToken cancellationToken) =>
-            Task.FromResult<IReadOnlyList<AiModelConfiguration>>(active is null ? [] : [active]);
-
-        public Task SaveChangesAsync(CancellationToken cancellationToken) => Task.CompletedTask;
     }
 }

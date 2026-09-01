@@ -28,9 +28,16 @@ public interface IApiKeyStore
 
 public interface IModerationStore
 {
-    Task AddAsync(ModerationRequest request, CancellationToken cancellationToken);
+    Task<bool> TryReserveAsync(ModerationRequest request, CancellationToken cancellationToken);
 
     Task<ModerationRequest?> GetByIdAsync(Guid applicationId, Guid requestId, CancellationToken cancellationToken);
+
+    Task<ModerationRequest?> GetByIdempotencyKeyAsync(
+        Guid applicationId,
+        string idempotencyKeyDigest,
+        CancellationToken cancellationToken);
+
+    Task AddItemAsync(ModerationItem item, CancellationToken cancellationToken);
 
     Task SaveChangesAsync(CancellationToken cancellationToken);
 }

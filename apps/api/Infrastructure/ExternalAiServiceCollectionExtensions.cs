@@ -30,6 +30,8 @@ public static class ExternalAiServiceCollectionExtensions
         services.TryAddSingleton<IAiEndpointPolicy, ExternalAiEndpointPolicy>();
         services.TryAddSingleton<IExternalAiCredentialResolver, ExternalAiCredentialResolver>();
         services.TryAddSingleton<IAiSchemaDescriptor, ExternalAiSchemaDescriptor>();
+        services.TryAddSingleton<IActiveAiConfigurationProvider, ActiveAiConfigurationProvider>();
+        services.TryAddSingleton<IModerationExecutionPolicy, ModerationExecutionPolicy>();
         services.AddSingleton<ExternalAiHttpExecutor>();
 
         services.AddHttpClient<OpenAiChatCompletionsClient>()

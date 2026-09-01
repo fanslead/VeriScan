@@ -7,25 +7,31 @@ namespace VeriScan.Application.Services;
 
 internal static class AdminReadMappings
 {
-    public static AdminOverviewResponse ToOverviewResponse(AdminOverviewReadData data)
+    public static AdminOverviewResponse ToOverviewResponse(
+        AdminOverviewReadData data,
+        AdminOverviewReadData previous)
     {
         var total = data.TodayItems;
+        var rejectRate = CalculateRate(data.RejectCount, total);
+        var reviewRate = CalculateRate(data.ReviewCount, total);
+        var previousRejectRate = CalculateRate(previous.RejectCount, previous.TodayItems);
+        var previousReviewRate = CalculateRate(previous.ReviewCount, previous.TodayItems);
         return new AdminOverviewResponse(
             data.TodayRequests,
             data.TodayItems,
             data.PassCount,
             data.RejectCount,
             data.ReviewCount,
-            CalculateRate(data.RejectCount, total),
-            CalculateRate(data.ReviewCount, total),
+            rejectRate,
+            reviewRate,
             data.P95LatencyMs,
             data.Trend.Select(ToTrendPoint).ToArray(),
             data.RecentRecords.Select(ToResponse).ToArray(),
             data.DataThrough,
-            null,
-            null,
-            null,
-            null);
+            CalculatePercentDelta(data.TodayRequests, previous.TodayRequests),
+            CalculatePointDelta(rejectRate, previousRejectRate),
+            CalculatePointDelta(reviewRate, previousReviewRate),
+            CalculatePercentDelta(data.P95LatencyMs, previous.P95LatencyMs));
     }
 
     public static ModerationRecordPageResponse ToPageResponse(
@@ -83,6 +89,27 @@ internal static class AdminReadMappings
     private static decimal? CalculateRate(long count, long total)
     {
         return total == 0 ? null : decimal.Round(count * 100m / total, 2);
+    }
+
+    private static decimal? CalculatePercentDelta(decimal? current, decimal? previous)
+    {
+        return previous is null or 0 || current is null
+            ? null
+            : decimal.Round((current.Value - previous.Value) * 100m / previous.Value, 2);
+    }
+
+    private static decimal? CalculatePercentDelta(long current, long previous)
+    {
+        return previous == 0
+            ? null
+            : decimal.Round((current - previous) * 100m / previous, 2);
+    }
+
+    private static decimal? CalculatePointDelta(decimal? current, decimal? previous)
+    {
+        return current is null || previous is null
+            ? null
+            : decimal.Round(current.Value - previous.Value, 2);
     }
 
     private static ModerationTrendPoint ToTrendPoint(AdminOverviewTrendReadData data)

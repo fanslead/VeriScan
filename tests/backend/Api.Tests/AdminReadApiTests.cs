@@ -113,7 +113,7 @@ public sealed class AdminReadApiTests : IClassFixture<ApiTestFactory>
     }
 
     [Fact]
-    public async Task OverviewUsesCurrentDayFactsAndLeavesUnavailableDeltasNull()
+    public async Task OverviewUsesCurrentDayFactsAndComputesLatencyFromCompletedItems()
     {
         using var client = factory.CreateClient();
         var application = await CreateApplicationAsync(client, "概览应用");
@@ -137,7 +137,8 @@ public sealed class AdminReadApiTests : IClassFixture<ApiTestFactory>
         Assert.True(overview.ReviewCount >= 1);
         Assert.NotNull(overview.RejectRate);
         Assert.NotNull(overview.ReviewRate);
-        Assert.Null(overview.P95LatencyMs);
+        Assert.NotNull(overview.P95LatencyMs);
+        Assert.True(overview.P95LatencyMs >= 0);
         Assert.NotEmpty(overview.Trend);
         Assert.NotEmpty(overview.RecentRecords);
         Assert.Null(overview.RequestDelta);

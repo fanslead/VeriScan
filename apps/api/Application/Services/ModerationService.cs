@@ -11,6 +11,7 @@ public interface IModerationService
     Task<BatchModerationResponse> CreateBatchAsync(
         BatchModerationRequest request,
         ApiKeyPrincipalData principal,
+        string? idempotencyKey,
         CancellationToken cancellationToken);
 
     Task<BatchModerationResponse> GetBatchAsync(
@@ -24,13 +25,15 @@ public sealed class ModerationService(
     IWordRuleStore wordRuleStore,
     IRuleModerationEngine ruleModerationEngine,
     IModerationAiClient moderationAiClient,
-    IContentHashService contentHashService) : IModerationService
+    IContentHashService contentHashService,
+    IModerationExecutionPolicy executionPolicy) : IModerationService
 {
     private const int MaximumContentBytes = 64 * 1024;
 
     public async Task<BatchModerationResponse> CreateBatchAsync(
         BatchModerationRequest request,
         ApiKeyPrincipalData principal,
+        string? idempotencyKey,
         CancellationToken cancellationToken)
     {
         if (request.Mode == ModerationMode.Async)
@@ -62,43 +65,86 @@ public sealed class ModerationService(
             }
         }
 
+        var identity = ModerationRequestIdentity.Create(
+            principal.ApplicationId,
+            idempotencyKey,
+            request,
+            contentHashService);
+        if (identity.IdempotencyKeyDigest is not null)
+        {
+            var replay = await moderationStore.GetByIdempotencyKeyAsync(
+                principal.ApplicationId,
+                identity.IdempotencyKeyDigest,
+                cancellationToken);
+            if (replay is not null)
+            {
+                return ResolveReplay(replay, identity.RequestFingerprint);
+            }
+        }
+
         var submittedAt = DateTimeOffset.UtcNow;
         var moderationRequest = new ModerationRequest(
             principal.TenantId,
             principal.ApplicationId,
             principal.KeyId,
             request.Mode.ToString().ToLowerInvariant(),
-            null,
-            null,
+            identity.IdempotencyKeyDigest,
+            identity.RequestFingerprint,
             submittedAt);
+        var reserved = await moderationStore.TryReserveAsync(moderationRequest, cancellationToken);
+        if (!reserved)
+        {
+            var replay = await moderationStore.GetByIdempotencyKeyAsync(
+                principal.ApplicationId,
+                identity.IdempotencyKeyDigest!,
+                cancellationToken)
+                ?? throw new RequestConflictException("相同幂等键的请求正在建立，请稍后重试。");
+            return ResolveReplay(replay, identity.RequestFingerprint);
+        }
+
         var rules = await wordRuleStore.GetEnabledAsync(cancellationToken);
 
-        foreach (var item in request.Items)
-        {
-            var moderationItem = new ModerationItem(
-                moderationRequest.Id,
-                principal.TenantId,
-                principal.ApplicationId,
-                item.Id,
-                item.Content,
-                contentHashService.Compute(item.Content),
-                item.Language,
-                item.ContentType,
-                submittedAt);
-            var ruleEvaluation = ruleModerationEngine.Evaluate(item.Content, rules);
-            var evaluation = ruleEvaluation;
-            AiModerationResult? aiResult = null;
-            if (ruleEvaluation.RequiresAi)
+        var workItems = request.Items
+            .Select(item => new ModerationWorkItem(
+                item,
+                new ModerationItem(
+                    moderationRequest.Id,
+                    principal.TenantId,
+                    principal.ApplicationId,
+                    item.Id,
+                    item.Content,
+                    contentHashService.Compute(item.Content),
+                    item.Language,
+                    item.ContentType,
+                    submittedAt),
+                ruleModerationEngine.Evaluate(item.Content, rules)))
+            .ToArray();
+
+        await Parallel.ForEachAsync(
+            workItems.Where(workItem => workItem.RuleEvaluation.RequiresAi),
+            new ParallelOptions
             {
-                aiResult = await moderationAiClient.ModerateAsync(
+                MaxDegreeOfParallelism = executionPolicy.MaximumConcurrentAiCalls,
+                CancellationToken = cancellationToken
+            },
+            async (workItem, itemCancellationToken) =>
+            {
+                workItem.AiResult = await moderationAiClient.ModerateAsync(
                     new AiModerationRequest(
                         principal.TenantId,
                         principal.ApplicationId,
-                        item.Content,
-                        item.Language),
-                    cancellationToken);
-                evaluation = AiModerationMappings.ToEvaluation(aiResult, ruleEvaluation);
-            }
+                        workItem.Request.Content,
+                        workItem.Request.Language),
+                    itemCancellationToken);
+            });
+
+        foreach (var workItem in workItems)
+        {
+            var moderationItem = workItem.Entity;
+            var aiResult = workItem.AiResult;
+            var evaluation = aiResult is null
+                ? workItem.RuleEvaluation
+                : AiModerationMappings.ToEvaluation(aiResult, workItem.RuleEvaluation);
 
             moderationItem.Complete(
                 evaluation.Decision,
@@ -117,13 +163,48 @@ public sealed class ModerationService(
                 aiResult?.OutputTokens,
                 aiResult?.FailureCode);
             moderationRequest.AddItem(moderationItem);
+            await moderationStore.AddItemAsync(moderationItem, cancellationToken);
         }
 
         moderationRequest.Complete(DateTimeOffset.UtcNow);
-        await moderationStore.AddAsync(moderationRequest, cancellationToken);
         await moderationStore.SaveChangesAsync(cancellationToken);
 
         return ModerationMappings.ToResponse(moderationRequest);
+    }
+
+    private static BatchModerationResponse ResolveReplay(
+        ModerationRequest existing,
+        string requestFingerprint)
+    {
+        if (!string.Equals(
+                existing.RequestFingerprint,
+                requestFingerprint,
+                StringComparison.Ordinal))
+        {
+            throw new RequestConflictException("相同幂等键已用于不同的审核请求。");
+        }
+
+        if (existing.ProcessingStatus is ModerationProcessingStatus.Completed or
+            ModerationProcessingStatus.CompletedWithErrors)
+        {
+            return ModerationMappings.ToResponse(existing);
+        }
+
+        throw new RequestConflictException("相同幂等键的审核请求仍在处理中，请稍后重试。");
+    }
+
+    private sealed class ModerationWorkItem(
+        BatchModerationItemRequest request,
+        ModerationItem entity,
+        RuleEvaluation ruleEvaluation)
+    {
+        public BatchModerationItemRequest Request { get; } = request;
+
+        public ModerationItem Entity { get; } = entity;
+
+        public RuleEvaluation RuleEvaluation { get; } = ruleEvaluation;
+
+        public AiModerationResult? AiResult { get; set; }
     }
 
     public async Task<BatchModerationResponse> GetBatchAsync(

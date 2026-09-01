@@ -61,6 +61,7 @@ public sealed partial class AdminReadStore(VeriScanDbContext dbContext) : IAdmin
                 request => request.SubmittedAt >= from && request.SubmittedAt < through,
                 cancellationToken);
 
+        var p95LatencyMs = await GetP95LatencyMsAsync(from, through, items, cancellationToken);
         var trend = await GetTrendAsync(from, through, items, cancellationToken);
 
         var recentRecords = await items
@@ -76,7 +77,7 @@ public sealed partial class AdminReadStore(VeriScanDbContext dbContext) : IAdmin
             aggregate?.Pass ?? 0,
             aggregate?.Reject ?? 0,
             aggregate?.Review ?? 0,
-            null,
+            p95LatencyMs,
             trend,
             recentRecords,
             through);
@@ -182,6 +183,34 @@ public sealed partial class AdminReadStore(VeriScanDbContext dbContext) : IAdmin
                 group.LongCount(item => item.Decision == ModerationDecision.Review)))
             .OrderBy(point => point.Hour)
             .ToListAsync(cancellationToken);
+    }
+
+    private async Task<decimal?> GetP95LatencyMsAsync(
+        DateTimeOffset from,
+        DateTimeOffset through,
+        IQueryable<ModerationItem> items,
+        CancellationToken cancellationToken)
+    {
+        if (dbContext.Database.IsNpgsql())
+        {
+            return await GetPostgresP95LatencyMsAsync(from, through, cancellationToken);
+        }
+
+        var timestamps = await items
+            .Where(item => item.MachineCompletedAt.HasValue)
+            .Select(item => new { item.CreatedAt, item.MachineCompletedAt })
+            .ToListAsync(cancellationToken);
+        if (timestamps.Count == 0)
+        {
+            return null;
+        }
+
+        var latencies = timestamps
+            .Select(item => Math.Max(0m, (decimal)(item.MachineCompletedAt!.Value - item.CreatedAt).TotalMilliseconds))
+            .OrderBy(value => value)
+            .ToArray();
+        var index = Math.Max(0, (int)Math.Ceiling(latencies.Length * 0.95) - 1);
+        return decimal.Round(latencies[index], 2);
     }
 
 }

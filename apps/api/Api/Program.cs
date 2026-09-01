@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using VeriScan.Api.Authentication;
+using VeriScan.Api.Diagnostics;
 using VeriScan.Api.Endpoints;
 using VeriScan.Api.Middleware;
 using VeriScan.Api.OpenApi;
@@ -24,6 +25,9 @@ if (builder.Environment.IsProduction() && string.IsNullOrWhiteSpace(adminAuthent
 builder.Services.AddOpenApi(options => options.AddDocumentTransformer<ApiDocumentTransformer>());
 builder.Services.AddProblemDetails();
 builder.Services.AddExceptionHandler<ApiExceptionHandler>();
+builder.Services.AddVeriScanObservability(
+    builder.Configuration,
+    builder.Environment.ApplicationName);
 builder.Services.AddValidation();
 builder.Services.ConfigureHttpJsonOptions(options =>
 {
@@ -79,6 +83,7 @@ builder.Services.AddScoped<IApplicationService, ApplicationService>();
 builder.Services.AddScoped<IApiKeyService, ApiKeyService>();
 builder.Services.AddScoped<IModerationService, ModerationService>();
 builder.Services.AddScoped<IAdminReadService, AdminReadService>();
+builder.Services.AddScoped<IApplicationUsageService, ApplicationUsageService>();
 builder.Services.AddScoped<IAiConfigurationService, AiConfigurationService>();
 builder.Services.AddSingleton<IRuleModerationEngine, RuleModerationEngine>();
 builder.Services.AddVeriScanInfrastructure(builder.Configuration);
@@ -87,6 +92,8 @@ builder.Services.AddVeriScanExternalAi(builder.Configuration);
 var app = builder.Build();
 
 app.UseExceptionHandler();
+app.UseRouting();
+app.UseVeriScanRequestTelemetry();
 app.UseStatusCodePages();
 app.UseAuthentication();
 app.UseAuthorization();
@@ -111,6 +118,7 @@ app.MapApplicationEndpoints();
 app.MapApiKeyEndpoints();
 app.MapModerationEndpoints();
 app.MapAdminReadEndpoints();
+app.MapApplicationUsageEndpoints();
 app.MapAiConfigurationEndpoints();
 
 app.Run();

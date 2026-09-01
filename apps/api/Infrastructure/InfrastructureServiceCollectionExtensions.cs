@@ -35,6 +35,7 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddScoped<IApiKeyStore, ApiKeyStore>();
         services.AddScoped<IModerationStore, ModerationStore>();
         services.AddScoped<IAdminReadStore, AdminReadStore>();
+        services.AddScoped<IApplicationUsageStore, ApplicationUsageStore>();
         services.AddScoped<IWordRuleStore, WordRuleStore>();
         services.AddScoped<IAiModelConfigurationStore, AiModelConfigurationStore>();
         services.AddScoped<IApiKeyMaterialGenerator, ApiKeyMaterialService>();

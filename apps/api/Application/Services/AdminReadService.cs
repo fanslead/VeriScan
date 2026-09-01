@@ -24,7 +24,11 @@ public sealed class AdminReadService(IAdminReadStore adminReadStore) : IAdminRea
         var through = DateTimeOffset.UtcNow;
         var from = new DateTimeOffset(through.UtcDateTime.Date, TimeSpan.Zero);
         var data = await adminReadStore.GetOverviewAsync(from, through, cancellationToken);
-        return AdminReadMappings.ToOverviewResponse(data);
+        var previous = await adminReadStore.GetOverviewAsync(
+            from.AddDays(-1),
+            through.AddDays(-1),
+            cancellationToken);
+        return AdminReadMappings.ToOverviewResponse(data, previous);
     }
 
     public async Task<ModerationRecordPageResponse> ListRecordsAsync(

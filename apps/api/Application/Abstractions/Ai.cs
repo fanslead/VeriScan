@@ -32,6 +32,11 @@ public interface IModerationAiClient
         CancellationToken cancellationToken);
 }
 
+public interface IActiveAiConfigurationProvider
+{
+    Task<AiModelConfiguration?> GetActiveAsync(CancellationToken cancellationToken);
+}
+
 public interface IAiConfigurationProbe
 {
     Task<AiConfigurationProbeResult> ProbeAsync(
