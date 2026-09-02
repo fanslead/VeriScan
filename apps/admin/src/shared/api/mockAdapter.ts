@@ -15,6 +15,9 @@ import type {
   ApiErrorShape,
   ApiKey,
   Application,
+  ApplicationWebhook,
+  ApplicationWebhookSecret,
+  ApplicationWebhookTest,
   ApplicationUsage,
   CreateApplicationInput,
   CreateKeyInput,
@@ -46,6 +49,37 @@ const notFound = (message: string) => {
   throw new MockApiError({ code: 'not_found', message, retryable: false });
 };
 
+const validationError = (message: string) => {
+  throw new MockApiError({ code: 'validation_error', message, retryable: false });
+};
+
+const normalizeWebhookUrl = (value: unknown): string => {
+  if (typeof value !== 'string' || !value.trim()) return validationError('请输入 Webhook 地址');
+  try {
+    const url = new URL(value.trim());
+    const host = url.hostname.toLowerCase().replace(/\.$/, '');
+    const isIpLiteral = host.startsWith('[') || /^(?:\d{1,3}\.){3}\d{1,3}$/.test(host);
+    if (
+      url.protocol !== 'https:' ||
+      !host ||
+      isIpLiteral ||
+      url.username ||
+      url.password ||
+      url.search ||
+      url.hash ||
+      host === 'localhost' ||
+      host.endsWith('.localhost') ||
+      host.endsWith('.local') ||
+      host.endsWith('.internal')
+    ) {
+      return validationError('Webhook 地址必须是有效的 HTTPS 地址');
+    }
+    return url.toString();
+  } catch {
+    return validationError('Webhook 地址必须是有效的 HTTPS 地址');
+  }
+};
+
 const makePlaintextKey = (environment: 'live' | 'test') => {
   const publicIdBytes = new Uint8Array(16);
   const secretBytes = new Uint8Array(32);
@@ -69,12 +103,63 @@ const findAiConfiguration = (id: string) => aiConfigurations.find((item) => item
 
 const findRuleSet = (id: string) => ruleSets.find((item) => item.id === id);
 
+interface MockWebhookState {
+  webhook: ApplicationWebhook;
+  signingSecret: string;
+  tests: Map<string, ApplicationWebhookTest>;
+}
+
+const asObject = (value: unknown): Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+
+const makeWebhookSecret = () => {
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  return `whsec_${btoa(String.fromCharCode(...bytes))
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/g, '')}`;
+};
+
+const makeWebhookId = (prefix: string) =>
+  typeof crypto.randomUUID === 'function'
+    ? `${prefix}-${crypto.randomUUID()}`
+    : `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
 const parseQuery = (path: string) => {
   const url = new URL(path, window.location.origin);
   return { pathname: url.pathname, search: url.searchParams };
 };
 
 export class MockApiClient implements ApiClient {
+  private readonly webhookStates = new Map<string, MockWebhookState>();
+
+  private getWebhookState(applicationId: string): MockWebhookState | undefined {
+    return this.webhookStates.get(applicationId);
+  }
+
+  private createWebhookView(applicationId: string): ApplicationWebhook {
+    const state = this.getWebhookState(applicationId);
+    if (state) return structuredClone(state.webhook);
+    return {
+      configured: false,
+      id: null,
+      applicationId,
+      endpointUrl: null,
+      enabled: false,
+      revision: null,
+      currentRevisionTested: false,
+      lastTestId: null,
+      lastTestStatus: null,
+      lastTestHttpStatusCode: null,
+      lastTestLatencyMilliseconds: null,
+      lastTestedAt: null,
+      updatedAt: null,
+    };
+  }
+
   async get<T>(path: string): Promise<T> {
     await wait();
     const { pathname, search } = parseQuery(path);
@@ -172,6 +257,35 @@ export class MockApiClient implements ApiClient {
       return result(usage) as T;
     }
 
+    const webhookTestMatch = pathname.match(/^\/applications\/([^/]+)\/webhook\/tests\/([^/]+)$/);
+    if (webhookTestMatch) {
+      const application = findApplication(webhookTestMatch[1]);
+      if (!application) return notFound('应用不存在');
+      const state = this.getWebhookState(webhookTestMatch[1]);
+      const test = state?.tests.get(webhookTestMatch[2]);
+      if (!state || !test) return notFound('Webhook 连接测试不存在');
+      if (test.status === 'pending' || test.status === 'delivering') {
+        const completedAt = new Date().toISOString();
+        test.status = 'succeeded';
+        test.httpStatusCode = 200;
+        test.latencyMilliseconds = 42;
+        test.completedAt = completedAt;
+        state.webhook.currentRevisionTested = state.webhook.revision === test.configurationRevision;
+        state.webhook.lastTestStatus = 'succeeded';
+        state.webhook.lastTestHttpStatusCode = test.httpStatusCode;
+        state.webhook.lastTestLatencyMilliseconds = test.latencyMilliseconds;
+        state.webhook.lastTestedAt = completedAt;
+        state.webhook.updatedAt = completedAt;
+      }
+      return result(test) as T;
+    }
+
+    const webhookMatch = pathname.match(/^\/applications\/([^/]+)\/webhook$/);
+    if (webhookMatch) {
+      if (!findApplication(webhookMatch[1])) return notFound('应用不存在');
+      return result(this.createWebhookView(webhookMatch[1])) as T;
+    }
+
     const keyMatch = pathname.match(/^\/applications\/([^/]+)\/(?:api-keys|keys)$/);
     if (keyMatch) {
       return result(apiKeys.filter((item) => item.applicationId === keyMatch[1])) as T;
@@ -219,6 +333,65 @@ export class MockApiClient implements ApiClient {
 
   async post<T>(path: string, body?: unknown): Promise<T> {
     await wait(320);
+    const webhookTestMatch = path.match(/^\/applications\/([^/]+)\/webhook\/tests$/);
+    if (webhookTestMatch) {
+      const application = findApplication(webhookTestMatch[1]);
+      if (!application) return notFound('应用不存在');
+      const state = this.getWebhookState(webhookTestMatch[1]);
+      if (!state) return notFound('应用尚未配置 Webhook');
+      const submittedAt = new Date().toISOString();
+      const testId = makeWebhookId('webhook-test');
+      const test: ApplicationWebhookTest = {
+        testId,
+        applicationId: application.id,
+        configurationRevision: state.webhook.revision ?? 1,
+        status: 'pending',
+        httpStatusCode: null,
+        latencyMilliseconds: null,
+        failureCode: null,
+        submittedAt,
+        completedAt: null,
+      };
+      state.tests.set(testId, test);
+      state.webhook.lastTestId = testId;
+      state.webhook.lastTestStatus = 'pending';
+      state.webhook.currentRevisionTested = false;
+      state.webhook.lastTestHttpStatusCode = null;
+      state.webhook.lastTestLatencyMilliseconds = null;
+      state.webhook.lastTestedAt = null;
+      state.webhook.updatedAt = submittedAt;
+      return result({
+        testId,
+        statusUrl: `/api/admin/v1/applications/${application.id}/webhook/tests/${testId}`,
+        submittedAt,
+      }) as T;
+    }
+
+    const webhookRotateMatch = path.match(/^\/applications\/([^/]+)\/webhook\/secret\/rotate$/);
+    if (webhookRotateMatch) {
+      const application = findApplication(webhookRotateMatch[1]);
+      if (!application) return notFound('应用不存在');
+      const state = this.getWebhookState(webhookRotateMatch[1]);
+      if (!state) return notFound('应用尚未配置 Webhook');
+      const rotatedAt = new Date().toISOString();
+      state.signingSecret = makeWebhookSecret();
+      state.webhook.revision = (state.webhook.revision ?? 0) + 1;
+      state.webhook.enabled = false;
+      state.webhook.currentRevisionTested = false;
+      state.webhook.lastTestId = null;
+      state.webhook.lastTestStatus = null;
+      state.webhook.lastTestHttpStatusCode = null;
+      state.webhook.lastTestLatencyMilliseconds = null;
+      state.webhook.lastTestedAt = null;
+      state.webhook.updatedAt = rotatedAt;
+      state.tests.clear();
+      const response: ApplicationWebhookSecret = {
+        signingSecret: state.signingSecret,
+        rotatedAt,
+      };
+      return result(response) as T;
+    }
+
     if (path === '/rule-sets') {
       const input = body as RuleSetDraftInput;
       const now = new Date().toISOString();
@@ -535,6 +708,53 @@ export class MockApiClient implements ApiClient {
 
   async put<T>(path: string, body?: unknown): Promise<T> {
     await wait(300);
+    const webhookMatch = path.match(/^\/applications\/([^/]+)\/webhook$/);
+    if (webhookMatch) {
+      const application = findApplication(webhookMatch[1]);
+      if (!application) return notFound('应用不存在');
+      const endpointUrl = normalizeWebhookUrl(asObject(body).endpointUrl);
+      const now = new Date().toISOString();
+      const existing = this.getWebhookState(application.id);
+      if (!existing) {
+        const state: MockWebhookState = {
+          webhook: {
+            configured: true,
+            id: makeWebhookId('webhook'),
+            applicationId: application.id,
+            endpointUrl,
+            enabled: false,
+            revision: 1,
+            currentRevisionTested: false,
+            lastTestId: null,
+            lastTestStatus: null,
+            lastTestHttpStatusCode: null,
+            lastTestLatencyMilliseconds: null,
+            lastTestedAt: null,
+            updatedAt: now,
+          },
+          signingSecret: makeWebhookSecret(),
+          tests: new Map(),
+        };
+        this.webhookStates.set(application.id, state);
+        return result({ webhook: state.webhook, signingSecret: state.signingSecret }) as T;
+      }
+
+      if (existing.webhook.endpointUrl !== endpointUrl) {
+        existing.webhook.revision = (existing.webhook.revision ?? 0) + 1;
+        existing.webhook.enabled = false;
+        existing.webhook.currentRevisionTested = false;
+        existing.webhook.lastTestId = null;
+        existing.webhook.lastTestStatus = null;
+        existing.webhook.lastTestHttpStatusCode = null;
+        existing.webhook.lastTestLatencyMilliseconds = null;
+        existing.webhook.lastTestedAt = null;
+        existing.tests.clear();
+      }
+      existing.webhook.endpointUrl = endpointUrl;
+      existing.webhook.updatedAt = now;
+      return result({ webhook: existing.webhook, signingSecret: null }) as T;
+    }
+
     const bindingMatch = path.match(/^\/applications\/([^/]+)\/rule-set$/);
     if (bindingMatch) {
       const application = findApplication(bindingMatch[1]);
@@ -616,6 +836,26 @@ export class MockApiClient implements ApiClient {
 
   async patch<T>(path: string, body?: unknown): Promise<T> {
     await wait(300);
+    const webhookMatch = path.match(/^\/applications\/([^/]+)\/webhook$/);
+    if (webhookMatch) {
+      const application = findApplication(webhookMatch[1]);
+      if (!application) return notFound('应用不存在');
+      const state = this.getWebhookState(application.id);
+      if (!state) return notFound('应用尚未配置 Webhook');
+      const input = asObject(body);
+      if (typeof input.enabled !== 'boolean') return validationError('通知状态不可用');
+      if (input.enabled && !state.webhook.currentRevisionTested) {
+        throw new MockApiError({
+          code: 'conflict',
+          message: '请先完成 Webhook 连接测试',
+          retryable: false,
+        });
+      }
+      state.webhook.enabled = input.enabled;
+      state.webhook.updatedAt = new Date().toISOString();
+      return result(state.webhook) as T;
+    }
+
     const applicationMatch = path.match(/^\/applications\/([^/]+)$/);
     if (applicationMatch) {
       const application = findApplication(applicationMatch[1]);

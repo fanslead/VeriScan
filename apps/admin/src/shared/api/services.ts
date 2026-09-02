@@ -19,6 +19,13 @@ import {
 } from './realApiAdapter';
 import { MockApiClient } from './mockAdapter';
 import { useAuthStore } from '@/shared/auth/authStore';
+import {
+  mapApplicationWebhookResponse,
+  mapApplicationWebhookSavedResponse,
+  mapApplicationWebhookSecretResponse,
+  mapApplicationWebhookTestAcceptedResponse,
+  mapApplicationWebhookTestResponse,
+} from './applicationWebhookAdapter';
 import type {
   AiConfiguration,
   AiConfigurationDraftInput,
@@ -26,6 +33,11 @@ import type {
   AuditEventList,
   ApiKey,
   Application,
+  ApplicationWebhook,
+  ApplicationWebhookSaved,
+  ApplicationWebhookSecret,
+  ApplicationWebhookTest,
+  ApplicationWebhookTestAccepted,
   ApplicationUsage,
   CreateApplicationInput,
   CreateKeyInput,
@@ -112,6 +124,51 @@ export function createModerationService(client: ApiClient, mode: ApiMode = apiMo
     getApplicationUsage: async (applicationId: string): Promise<ApplicationUsage> =>
       mapApplicationUsageResponse(
         await client.get<unknown>(`/applications/${applicationId}/usage`),
+      ),
+
+    getApplicationWebhook: async (applicationId: string): Promise<ApplicationWebhook> =>
+      mapApplicationWebhookResponse(
+        await client.get<unknown>(`/applications/${applicationId}/webhook`),
+      ),
+
+    saveApplicationWebhook: async (
+      applicationId: string,
+      endpointUrl: string,
+    ): Promise<ApplicationWebhookSaved> =>
+      mapApplicationWebhookSavedResponse(
+        await client.put<unknown>(`/applications/${applicationId}/webhook`, {
+          endpointUrl: endpointUrl.trim(),
+        }),
+      ),
+
+    setApplicationWebhookStatus: async (
+      applicationId: string,
+      enabled: boolean,
+    ): Promise<ApplicationWebhook> =>
+      mapApplicationWebhookResponse(
+        await client.patch<unknown>(`/applications/${applicationId}/webhook`, { enabled }),
+      ),
+
+    testApplicationWebhook: async (
+      applicationId: string,
+    ): Promise<ApplicationWebhookTestAccepted> =>
+      mapApplicationWebhookTestAcceptedResponse(
+        await client.post<unknown>(`/applications/${applicationId}/webhook/tests`),
+      ),
+
+    getApplicationWebhookTest: async (
+      applicationId: string,
+      testId: string,
+    ): Promise<ApplicationWebhookTest> =>
+      mapApplicationWebhookTestResponse(
+        await client.get<unknown>(`/applications/${applicationId}/webhook/tests/${testId}`),
+      ),
+
+    rotateApplicationWebhookSecret: async (
+      applicationId: string,
+    ): Promise<ApplicationWebhookSecret> =>
+      mapApplicationWebhookSecretResponse(
+        await client.post<unknown>(`/applications/${applicationId}/webhook/secret/rotate`),
       ),
 
     setApplicationStatus: async (

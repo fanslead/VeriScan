@@ -41,6 +41,52 @@ export interface Application {
   activeKeyCount: number;
 }
 
+export type WebhookTestStatus = 'pending' | 'delivering' | 'succeeded' | 'failed';
+
+export interface ApplicationWebhook {
+  configured: boolean;
+  id: string | null;
+  applicationId: string;
+  endpointUrl: string | null;
+  enabled: boolean;
+  revision: number | null;
+  currentRevisionTested: boolean;
+  lastTestId: string | null;
+  lastTestStatus: WebhookTestStatus | null;
+  lastTestHttpStatusCode: number | null;
+  lastTestLatencyMilliseconds: number | null;
+  lastTestedAt: string | null;
+  updatedAt: string | null;
+}
+
+export interface ApplicationWebhookSaved {
+  webhook: ApplicationWebhook;
+  signingSecret: string | null;
+}
+
+export interface ApplicationWebhookSecret {
+  signingSecret: string;
+  rotatedAt: string;
+}
+
+export interface ApplicationWebhookTestAccepted {
+  testId: string;
+  statusUrl: string;
+  submittedAt: string;
+}
+
+export interface ApplicationWebhookTest {
+  testId: string;
+  applicationId: string;
+  configurationRevision: number;
+  status: WebhookTestStatus;
+  httpStatusCode: number | null;
+  latencyMilliseconds: number | null;
+  failureCode: string | null;
+  submittedAt: string;
+  completedAt: string | null;
+}
+
 export interface ApplicationUsage {
   applicationId: string;
   apiKeyId: string | null;

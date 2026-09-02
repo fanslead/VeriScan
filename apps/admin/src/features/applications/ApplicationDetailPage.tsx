@@ -9,6 +9,7 @@ import { ApplicationDetailHeader } from './ApplicationDetailHeader';
 import { ApplicationPolicyCard } from './ApplicationPolicyCard';
 import { ApplicationSummary } from './ApplicationSummary';
 import { ApplicationUsageCard } from './ApplicationUsageCard';
+import { ApplicationWebhookCard } from './ApplicationWebhookCard';
 
 export function ApplicationDetailPage() {
   const { appId = '' } = useParams();
@@ -128,6 +129,7 @@ export function ApplicationDetailPage() {
           onRetry={() => void usage.refetch()}
         />
       </section>
+      <ApplicationWebhookCard applicationId={app.id} />
     </div>
   );
 }

@@ -14,6 +14,36 @@ class RecordingClient implements ApiClient {
 
   async get<T>(path: string): Promise<T> {
     this.calls.push({ method: 'GET', path });
+    if (path === '/applications/app-1/webhook') {
+      return {
+        configured: true,
+        id: 'webhook-1',
+        applicationId: 'app-1',
+        endpointUrl: 'https://example.com/veriscan/webhook',
+        enabled: false,
+        revision: 1,
+        currentRevisionTested: false,
+        lastTestId: null,
+        lastTestStatus: null,
+        lastTestHttpStatusCode: null,
+        lastTestLatencyMilliseconds: null,
+        lastTestedAt: null,
+        updatedAt: '2026-09-01T00:00:00Z',
+      } as T;
+    }
+    if (path === '/applications/app-1/webhook/tests/test-1') {
+      return {
+        testId: 'test-1',
+        applicationId: 'app-1',
+        configurationRevision: 1,
+        status: 'succeeded',
+        httpStatusCode: 200,
+        latencyMilliseconds: 48,
+        failureCode: null,
+        submittedAt: '2026-09-01T00:00:00Z',
+        completedAt: '2026-09-01T00:00:01Z',
+      } as T;
+    }
     if (path === '/applications/app-1/usage') {
       return {
         applicationId: 'app-1',
@@ -69,6 +99,19 @@ class RecordingClient implements ApiClient {
         updatedAt: '2026-09-01T00:00:00Z',
       } as T;
     }
+    if (path === '/applications/app-1/webhook/tests') {
+      return {
+        testId: 'test-1',
+        statusUrl: '/api/admin/v1/applications/app-1/webhook/tests/test-1',
+        submittedAt: '2026-09-01T00:00:00Z',
+      } as T;
+    }
+    if (path === '/applications/app-1/webhook/secret/rotate') {
+      return {
+        signingSecret: 'whsec_rotated_secret',
+        rotatedAt: '2026-09-01T00:00:00Z',
+      } as T;
+    }
     return {
       keyId: 'key-new',
       keyPrefix: 'vsk_live_abc',
@@ -80,6 +123,26 @@ class RecordingClient implements ApiClient {
 
   async put<T>(path: string, body?: unknown): Promise<T> {
     this.calls.push({ method: 'PUT', path, body });
+    if (path === '/applications/app-1/webhook') {
+      return {
+        webhook: {
+          configured: true,
+          id: 'webhook-1',
+          applicationId: 'app-1',
+          endpointUrl: 'https://example.com/veriscan/webhook',
+          enabled: false,
+          revision: 1,
+          currentRevisionTested: false,
+          lastTestId: null,
+          lastTestStatus: null,
+          lastTestHttpStatusCode: null,
+          lastTestLatencyMilliseconds: null,
+          lastTestedAt: null,
+          updatedAt: '2026-09-01T00:00:00Z',
+        },
+        signingSecret: 'whsec_initial_secret',
+      } as T;
+    }
     return {
       id: 'ai-config-1',
       publicRevisionId: 'ai-model@2026-09-01',
@@ -111,6 +174,23 @@ class RecordingClient implements ApiClient {
 
   async patch<T>(path: string, body?: unknown): Promise<T> {
     this.calls.push({ method: 'PATCH', path, body });
+    if (path === '/applications/app-1/webhook') {
+      return {
+        configured: true,
+        id: 'webhook-1',
+        applicationId: 'app-1',
+        endpointUrl: 'https://example.com/veriscan/webhook',
+        enabled: true,
+        revision: 1,
+        currentRevisionTested: true,
+        lastTestId: 'test-1',
+        lastTestStatus: 'succeeded',
+        lastTestHttpStatusCode: 200,
+        lastTestLatencyMilliseconds: 48,
+        lastTestedAt: '2026-09-01T00:00:01Z',
+        updatedAt: '2026-09-01T00:00:01Z',
+      } as T;
+    }
     return {
       id: 'app-1',
       publicId: 'app_public_1',
@@ -212,5 +292,35 @@ describe('真实 API service contract', () => {
       reviewCount: 1,
       aiInputTokens: 120,
     });
+  });
+
+  it('使用应用 Webhook 资源的独立端点，并只在保存或轮换响应中接收一次性密钥', async () => {
+    const client = new RecordingClient();
+    const service = createModerationService(client, 'real');
+
+    await service.getApplicationWebhook('app-1');
+    const saved = await service.saveApplicationWebhook(
+      'app-1',
+      ' https://example.com/veriscan/webhook ',
+    );
+    await service.setApplicationWebhookStatus('app-1', true);
+    const accepted = await service.testApplicationWebhook('app-1');
+    await service.getApplicationWebhookTest('app-1', accepted.testId);
+    const rotated = await service.rotateApplicationWebhookSecret('app-1');
+
+    expect(saved.signingSecret).toBe('whsec_initial_secret');
+    expect(rotated.signingSecret).toBe('whsec_rotated_secret');
+    expect(client.calls.map((call) => `${call.method} ${call.path}`)).toEqual([
+      'GET /applications/app-1/webhook',
+      'PUT /applications/app-1/webhook',
+      'PATCH /applications/app-1/webhook',
+      'POST /applications/app-1/webhook/tests',
+      'GET /applications/app-1/webhook/tests/test-1',
+      'POST /applications/app-1/webhook/secret/rotate',
+    ]);
+    expect(client.calls[1].body).toEqual({
+      endpointUrl: 'https://example.com/veriscan/webhook',
+    });
+    expect(client.calls[2].body).toEqual({ enabled: true });
   });
 });
