@@ -30,6 +30,7 @@ VeriScan 是面向业务系统的内容安全审核服务。它用版本化关�
 - **可治理规则**：草稿校验、不可变发布、复制新版本、应用显式绑定、请求固化实际版本。
 - **外部 AI 路由**：后台管理模型与端点，支持连接测试、发布和启用；未配置或调用失败时按策略返回 `review`，不会伪装为 AI 判定。
 - **应用级鉴权**：每个应用拥有独立 API Key，可撤销、轮换、设置有效期和 scope，并按应用统计调用量与判定分布。
+- **可靠结果通知**：应用可配置、测试和启停 Webhook；异步终态先写本地可靠队列，再由 Svix 完成签名、投递和重试。
 - **结果留痕**：记录请求、条目、实际规则版本、路由、风险分与最终状态；不承载人工复审队列。
 - **轻量依赖**：ASP.NET Core 10、PostgreSQL 16、Redis、React 19 + Vite；管理后台使用 pnpm 管理。
 
@@ -44,7 +45,7 @@ packages/
 tests/
   backend/              后端单元与集成测试
   performance/          规则引擎基线与 HTTP 压测脚本
-infra/                  PostgreSQL、Redis、Keycloak 本地依赖
+infra/                  PostgreSQL、Redis、Keycloak、Svix 本地依赖
 docs/                   实施、验收和界面文档
 ```
 
@@ -57,7 +58,7 @@ docs/                   实施、验收和界面文档
 ```bash
 pnpm install
 cp infra/.env.example infra/.env
-# 修改示例密码后，构建并启动 PostgreSQL、Redis、Keycloak、迁移任务、API 和管理后台
+# 修改示例密码并按 infra/README.md 生成 Svix 令牌后，构建并启动全部服务
 docker compose --env-file infra/.env -f infra/compose.yaml up -d --build --wait
 ```
 
@@ -110,7 +111,8 @@ pnpm --dir apps/admin dev
 1. 在“规则与词库”中创建草稿，以业务语言配置关键词、常见格式或组合条件及命中动作，校验后发布。
 2. 在“AI 配置”中选择协议，填写模型、服务地址和 API 密钥，完成连接测试后发布并启用。
 3. 在“应用”中创建调用方应用，绑定已发布规则版本，并创建具有 `moderation:submit` / `moderation:read` scope 的 API Key。
-4. 只在创建或轮换时复制 API Key 明文；服务端只保存摘要，之后无法找回原值。
+4. 在应用详情保存公开 HTTPS Webhook 地址，立即保存一次性签名密钥；连接测试通过后再启用通知。
+5. 只在创建或轮换时复制 API Key 明文；服务端只保存摘要，之后无法找回原值。
 
 AI 供应商密钥由管理后台提交，服务端使用独立主密钥进行 AES-GCM 加密后入库。读取接口只返回“已配置”状态；编辑时留空表示保留，填写新值表示轮换。供应商密钥、API Key、pepper 和 AI 加密主密钥都不得写入日志、`appsettings*.json` 或 Git。生产环境应将主密钥交给 Secret Manager / Vault / KMS，并与数据库分离备份。
 
@@ -167,8 +169,13 @@ curl 'http://127.0.0.1:5000/api/v1/moderation/batches/<request-id>' \
 ```bash
 curl --request POST \
   'http://127.0.0.1:5000/api/v1/moderation/batches/<request-id>/cancel' \
-  --header 'X-API-Key: <application-api-key>'
+  --header 'X-API-Key: <application-api-key>' \
+  --header 'Idempotency-Key: cancel-order-comment-20260901-001'
 ```
+
+取消操作必须使用自己的 `Idempotency-Key`，不能复用提交批次时的键。相同取消键可安全重放；同一键指向不同批次会返回 HTTP 409。
+
+只有实际进入异步队列的 `async` 或 `auto` 请求会在终态产生 Webhook；同步请求不会投递。事件类型、签名验证、至少一次语义和启停边界见 [Webhook 接入与投递](docs/WEBHOOKS.md)。
 
 API Key 只能查询所属应用的记录。`/healthz` 是存活探针，`/readyz` 会实际检查 PostgreSQL 和待执行迁移。
 

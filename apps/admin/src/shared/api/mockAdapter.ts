@@ -739,7 +739,10 @@ export class MockApiClient implements ApiClient {
         return result({ webhook: state.webhook, signingSecret: state.signingSecret }) as T;
       }
 
+      let signingSecret: string | null = null;
       if (existing.webhook.endpointUrl !== endpointUrl) {
+        existing.signingSecret = makeWebhookSecret();
+        signingSecret = existing.signingSecret;
         existing.webhook.revision = (existing.webhook.revision ?? 0) + 1;
         existing.webhook.enabled = false;
         existing.webhook.currentRevisionTested = false;
@@ -752,7 +755,7 @@ export class MockApiClient implements ApiClient {
       }
       existing.webhook.endpointUrl = endpointUrl;
       existing.webhook.updatedAt = now;
-      return result({ webhook: existing.webhook, signingSecret: null }) as T;
+      return result({ webhook: existing.webhook, signingSecret }) as T;
     }
 
     const bindingMatch = path.match(/^\/applications\/([^/]+)\/rule-set$/);

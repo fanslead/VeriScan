@@ -1,4 +1,6 @@
 using System.Net.Http;
+using System.Security.Cryptography;
+using System.Text;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Newtonsoft.Json.Linq;
@@ -13,9 +15,6 @@ public sealed partial class SvixWebhookProvider(
     IOptionsMonitor<WebhookProviderOptions> options,
     ILogger<SvixWebhookProvider> logger) : IWebhookProvider
 {
-    private const string PrimaryEndpointId = "primary";
-    private const string PrimaryEndpointUid = "primary";
-
     private readonly object clientLock = new();
     private SvixClient? client;
     private string? clientServerUrl;
@@ -26,6 +25,7 @@ public sealed partial class SvixWebhookProvider(
         Guid applicationId,
         string applicationName,
         string endpointUrl,
+        string? currentProviderEndpointId,
         bool revealSecret,
         CancellationToken cancellationToken)
     {
@@ -44,23 +44,53 @@ public sealed partial class SvixWebhookProvider(
                 cancellationToken: token),
             cancellationToken);
 
+        var endpointUid = BuildEndpointUid(endpointUrl);
+        var hasCurrentEndpoint = !string.IsNullOrWhiteSpace(currentProviderEndpointId);
+        if (hasCurrentEndpoint)
+        {
+            ValidateProviderIdentifiers(application.Id, currentProviderEndpointId!);
+        }
+
+        // 新地址先以禁用状态创建；相同地址则保留现有 Channel，避免幂等保存形成投递空窗。
         var endpoint = await ExecuteAsync(
             "endpoint_configure",
             currentOptions,
             (svix, token) => svix.Endpoint.UpsertAsync(
                 application.Id,
-                PrimaryEndpointId,
+                endpointUid,
                 new EndpointUpsertIn
                 {
                     Url = endpointUrl,
-                    Uid = PrimaryEndpointUid,
-                    Disabled = false
+                    Uid = endpointUid,
+                    Disabled = !hasCurrentEndpoint,
+                    Channels = [hasCurrentEndpoint ? currentProviderEndpointId! : endpointUid]
                 },
                 token),
             cancellationToken);
 
+        var providerEndpointRecreated = hasCurrentEndpoint &&
+            !string.Equals(endpoint.Id, currentProviderEndpointId, StringComparison.Ordinal);
+        if (!hasCurrentEndpoint || providerEndpointRecreated)
+        {
+            endpoint = await ExecuteAsync(
+                "endpoint_activate",
+                currentOptions,
+                (svix, token) => svix.Endpoint.UpsertAsync(
+                    application.Id,
+                    endpointUid,
+                    new EndpointUpsertIn
+                    {
+                        Url = endpointUrl,
+                        Uid = endpointUid,
+                        Disabled = false,
+                        Channels = [endpoint.Id]
+                    },
+                    token),
+                cancellationToken);
+        }
+
         string? signingSecret = null;
-        if (revealSecret)
+        if (revealSecret || providerEndpointRecreated)
         {
             var secret = await ExecuteAsync(
                 "endpoint_secret_read",
@@ -126,13 +156,14 @@ public sealed partial class SvixWebhookProvider(
 
     public async Task<WebhookPublishReceipt> PublishAsync(
         string providerApplicationId,
+        string providerEndpointId,
         Guid eventId,
         string eventType,
         string payloadJson,
         CancellationToken cancellationToken)
     {
         var currentOptions = GetEnabledOptions();
-        ValidateProviderIdentifiers(providerApplicationId, PrimaryEndpointId);
+        ValidateProviderIdentifiers(providerApplicationId, providerEndpointId);
         if (eventId == Guid.Empty)
         {
             throw new RequestValidationException("Webhook 事件标识不能为空。");
@@ -163,7 +194,8 @@ public sealed partial class SvixWebhookProvider(
                 {
                     EventId = eventIdText,
                     EventType = eventType,
-                    Payload = payload
+                    Payload = payload,
+                    Channels = [providerEndpointId]
                 },
                 new MessageCreateOptions
                 {
@@ -335,6 +367,12 @@ public sealed partial class SvixWebhookProvider(
 
     private static string BuildApplicationUid(Guid applicationId) =>
         $"veriscan-{applicationId:N}";
+
+    private static string BuildEndpointUid(string endpointUrl)
+    {
+        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(endpointUrl));
+        return $"veriscan-{Convert.ToHexString(hash.AsSpan(0, 16)).ToLowerInvariant()}";
+    }
 
     private static void ValidateApplicationInput(
         Guid applicationId,

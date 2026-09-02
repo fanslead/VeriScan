@@ -109,6 +109,30 @@ public sealed class ApplicationWebhookApiTests
     }
 
     [Fact]
+    public async Task RecreatedProviderEndpointInvalidatesTestAndReturnsReplacementSecret()
+    {
+        var provider = new FakeWebhookProvider();
+        await using var factory = await CreateFactoryAsync(provider, startWebhookWorker: true);
+        using var client = factory.CreateClient();
+        var application = await CreateApplicationAsync(client, "供应商端点恢复 Webhook");
+        _ = await SaveWebhookAsync(client, application.Id, "https://hooks.example.com/veriscan");
+        await CompleteAndEnableTestAsync(client, application.Id);
+        provider.RecreateEndpointOnNextConfigure = true;
+
+        using var response = await SaveWebhookAsync(
+            client,
+            application.Id,
+            "https://hooks.example.com/veriscan");
+        var saved = await ReadResponseAsync<ApplicationWebhookSavedResponse>(response);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(2, saved.Webhook.Revision);
+        Assert.False(saved.Webhook.Enabled);
+        Assert.False(saved.Webhook.CurrentRevisionTested);
+        Assert.Equal(FakeWebhookProvider.ChangedSigningSecret, saved.SigningSecret);
+    }
+
+    [Fact]
     public async Task EnableBeforeCurrentRevisionTestReturnsConflict()
     {
         var provider = new FakeWebhookProvider();
@@ -217,7 +241,14 @@ public sealed class ApplicationWebhookApiTests
         Assert.False(saved.Webhook.CurrentRevisionTested);
         Assert.Null(saved.Webhook.LastTestId);
         Assert.Null(saved.Webhook.LastTestStatus);
-        Assert.Null(saved.SigningSecret);
+        Assert.Equal(FakeWebhookProvider.ChangedSigningSecret, saved.SigningSecret);
+
+        await CompleteAndEnableTestAsync(client, application.Id);
+        var testMessages = provider.Published
+            .Where(message => message.EventType == "webhook.test")
+            .ToArray();
+        Assert.Equal(2, testMessages.Length);
+        Assert.NotEqual(testMessages[0].ProviderEndpointId, testMessages[1].ProviderEndpointId);
     }
 
     [Fact]
@@ -511,6 +542,7 @@ public sealed class ApplicationWebhookApiTests
 
     public sealed record PublishedWebhook(
         string ProviderApplicationId,
+        string ProviderEndpointId,
         Guid EventId,
         string EventType,
         string PayloadJson);
@@ -521,11 +553,15 @@ public sealed class ApplicationWebhookApiTests
 
         public const string InitialSigningSecret = "whsec_initial_test_secret";
 
+        public const string ChangedSigningSecret = "whsec_changed_test_secret";
+
         public const string RotatedSigningSecret = "whsec_rotated_test_secret";
 
         public int ConfigureCalls;
 
         public int RotateCalls;
+
+        public bool RecreateEndpointOnNextConfigure { get; set; }
 
         public IReadOnlyList<PublishedWebhook> Published => published.ToArray();
 
@@ -533,15 +569,32 @@ public sealed class ApplicationWebhookApiTests
             Guid applicationId,
             string applicationName,
             string endpointUrl,
+            string? currentProviderEndpointId,
             bool revealSecret,
             CancellationToken cancellationToken)
         {
-            Interlocked.Increment(ref ConfigureCalls);
+            var configureCall = Interlocked.Increment(ref ConfigureCalls);
+            var providerEndpointId = currentProviderEndpointId ?? $"fake-endpoint-{configureCall}";
+            if (RecreateEndpointOnNextConfigure)
+            {
+                RecreateEndpointOnNextConfigure = false;
+                providerEndpointId = $"fake-endpoint-recreated-{configureCall}";
+            }
+
+            var providerEndpointRecreated = currentProviderEndpointId is not null &&
+                !string.Equals(
+                    providerEndpointId,
+                    currentProviderEndpointId,
+                    StringComparison.Ordinal);
             return Task.FromResult(
                 new WebhookEndpointRegistration(
                     $"fake-app-{applicationId:N}",
-                    "primary",
-                    revealSecret ? InitialSigningSecret : null));
+                    providerEndpointId,
+                    revealSecret || providerEndpointRecreated
+                        ? configureCall == 1
+                            ? InitialSigningSecret
+                            : ChangedSigningSecret
+                        : null));
         }
 
         public Task<string> RotateSecretAsync(
@@ -555,6 +608,7 @@ public sealed class ApplicationWebhookApiTests
 
         public Task<WebhookPublishReceipt> PublishAsync(
             string providerApplicationId,
+            string providerEndpointId,
             Guid eventId,
             string eventType,
             string payloadJson,
@@ -562,6 +616,7 @@ public sealed class ApplicationWebhookApiTests
         {
             published.Enqueue(new PublishedWebhook(
                 providerApplicationId,
+                providerEndpointId,
                 eventId,
                 eventType,
                 payloadJson));

@@ -8,7 +8,7 @@ public sealed class WebhookProviderUnavailableException()
 public sealed class WebhookProviderRequestException(string errorCode, string message)
     : ApplicationBaseException(errorCode, message);
 
-/// <summary>应用在 Webhook 供应商中的应用和主端点标识。</summary>
+/// <summary>应用在 Webhook 供应商中的应用和地址版本端点标识。</summary>
 public sealed record WebhookEndpointRegistration(
     string ProviderApplicationId,
     string ProviderEndpointId,
@@ -35,11 +35,12 @@ public sealed record WebhookAttemptResult(
 /// <summary>Webhook 供应商适配器边界。</summary>
 public interface IWebhookProvider
 {
-    /// <summary>创建或更新应用及其稳定的 primary 端点。</summary>
+    /// <summary>创建或更新应用及其按地址隔离的版本端点。</summary>
     Task<WebhookEndpointRegistration> ConfigureEndpointAsync(
         Guid applicationId,
         string applicationName,
         string endpointUrl,
+        string? currentProviderEndpointId,
         bool revealSecret,
         CancellationToken cancellationToken);
 
@@ -52,6 +53,7 @@ public interface IWebhookProvider
     /// <summary>以事件 ID 作为供应商幂等键发布消息。</summary>
     Task<WebhookPublishReceipt> PublishAsync(
         string providerApplicationId,
+        string providerEndpointId,
         Guid eventId,
         string eventType,
         string payloadJson,

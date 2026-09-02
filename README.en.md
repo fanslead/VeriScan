@@ -30,6 +30,7 @@ The admin console configures the model, request URL, protocol, timeout, concurre
 - **Governed policies:** validate drafts, publish immutable revisions, copy a published revision, bind an application explicitly, and preserve the effective policy revision on every request.
 - **External AI routing:** manage model endpoints in the console, test connectivity, publish, and activate a configuration. Missing or failed AI calls conservatively return `review` according to policy instead of pretending an AI decision exists.
 - **Per-application authentication:** each application owns independent API keys with scopes, expiry, rotation, and revocation. Usage and decision statistics are attributed to that application.
+- **Reliable result webhooks:** each application can configure, test, enable, or disable a webhook. Async terminal events enter a durable local queue before Svix signs, delivers, and retries them.
 - **Audit records, not a review queue:** requests, items, effective policies, routes, risk scores, and final states are recorded. Human review remains the caller's responsibility.
 - **Small operational footprint:** ASP.NET Core 10, PostgreSQL 16, Redis, and a React 19 + Vite admin console managed with pnpm.
 
@@ -44,7 +45,7 @@ packages/
 tests/
   backend/              Backend unit and integration tests
   performance/          Rule-engine baseline and HTTP load harness
-infra/                  Local PostgreSQL, Redis, and Keycloak dependencies
+infra/                  Local PostgreSQL, Redis, Keycloak, and Svix dependencies
 docs/                   Implementation, acceptance, and UI documentation
 ```
 
@@ -57,7 +58,7 @@ Prerequisites: .NET SDK 10.0.400, Node.js 24+, pnpm 11+, and Docker.
 ```bash
 pnpm install
 cp infra/.env.example infra/.env
-# Change the example passwords, then build and start all services
+# Change the example passwords and generate the Svix token described in infra/README.md
 docker compose --env-file infra/.env -f infra/compose.yaml up -d --build --wait
 ```
 
@@ -110,7 +111,8 @@ Open `http://127.0.0.1:5173`. The complete Compose stack seeds the local accepta
 1. Create a draft under **Rules & Library**, configure keywords, common formats, or word combinations and their actions in business language, validate it, and publish the revision.
 2. Under **AI Configuration**, choose the protocol, enter the model, service URL, and API key, then test, publish, and activate the configuration.
 3. Create a caller under **Applications**, bind a published rule revision, and issue an API key with `moderation:submit` / `moderation:read` scopes.
-4. Copy the plaintext API key only when it is created or rotated. The server stores only its digest and cannot recover it later.
+4. Save a public HTTPS webhook URL on the application detail page, persist the one-time signing secret, run a connectivity test, and only then enable notifications.
+5. Copy the plaintext API key only when it is created or rotated. The server stores only its digest and cannot recover it later.
 
 Provider secrets are submitted from the admin console and encrypted with AES-GCM under a separate master key. Read APIs return only a configured/not-configured state. Leaving the key blank while editing preserves it; entering a new key rotates it. Never put provider secrets, application API keys, the API-key pepper, or the encryption master key in logs, `appsettings*.json`, or Git. Production deployments should keep the master key in a Secret Manager, Vault, or KMS and back it up separately from the database.
 
@@ -167,8 +169,13 @@ Cancel an asynchronous batch that has not started:
 ```bash
 curl --request POST \
   'http://127.0.0.1:5000/api/v1/moderation/batches/<request-id>/cancel' \
-  --header 'X-API-Key: <application-api-key>'
+  --header 'X-API-Key: <application-api-key>' \
+  --header 'Idempotency-Key: cancel-order-comment-20260901-001'
 ```
+
+Cancellation requires an independent `Idempotency-Key`; do not reuse the submission key. Replaying the same cancellation key is safe, while using it for another batch returns HTTP 409.
+
+Only `async` requests and `auto` requests that actually enter the queue emit terminal webhooks. Synchronous requests never emit them. See [Webhook integration and delivery](docs/WEBHOOKS.md) for event schemas, signature verification, at-least-once semantics, and enable/disable behavior.
 
 An API key can read records only for its own application. `/healthz` is the liveness endpoint; `/readyz` verifies PostgreSQL connectivity and pending migrations.
 

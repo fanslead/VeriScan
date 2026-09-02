@@ -59,9 +59,9 @@ public sealed class ApplicationWebhookService(
         var application = await GetApplicationAsync(applicationId, cancellationToken);
         var endpointUrl = ValidateEndpointUrl(request.EndpointUrl);
         var webhook = await store.GetByApplicationAsync(applicationId, cancellationToken);
-        var isNew = webhook is null;
-        if (webhook is not null &&
-            !string.Equals(webhook.EndpointUrl, endpointUrl, StringComparison.Ordinal))
+        var endpointChanged = webhook is null ||
+            !string.Equals(webhook.EndpointUrl, endpointUrl, StringComparison.Ordinal);
+        if (webhook is not null && endpointChanged)
         {
             var preparingAt = DateTimeOffset.UtcNow;
             var beforePreparingJson = SafeAuditPayload(webhook);
@@ -79,10 +79,17 @@ public sealed class ApplicationWebhookService(
             application.Id,
             application.Name,
             endpointUrl,
-            isNew,
+            endpointChanged ? null : webhook!.ProviderEndpointId,
+            endpointChanged,
             cancellationToken);
         var changedAt = DateTimeOffset.UtcNow;
         var beforeJson = SafeAuditPayload(webhook);
+        var providerEndpointRecreated = webhook is not null &&
+            !endpointChanged &&
+            !string.Equals(
+                webhook.ProviderEndpointId,
+                registration.ProviderEndpointId,
+                StringComparison.Ordinal);
         if (webhook is null)
         {
             webhook = new ApplicationWebhook(
@@ -96,6 +103,11 @@ public sealed class ApplicationWebhookService(
         }
         else
         {
+            if (providerEndpointRecreated)
+            {
+                webhook.PrepareEndpointChange(changedAt);
+            }
+
             webhook.UpdateEndpoint(
                 endpointUrl,
                 registration.ProviderApplicationId,
@@ -112,7 +124,9 @@ public sealed class ApplicationWebhookService(
         await SaveChangesAsync(cancellationToken);
         return new ApplicationWebhookSavedResponse(
             ToResponse(applicationId, webhook),
-            isNew ? registration.SigningSecret : null);
+            endpointChanged || providerEndpointRecreated
+                ? registration.SigningSecret
+                : null);
     }
 
     public async Task<ApplicationWebhookResponse> SetStatusAsync(
@@ -167,7 +181,7 @@ public sealed class ApplicationWebhookService(
                 occurredAt = submittedAt,
                 data = new
                 {
-                    applicationId = application.PublicId,
+                    applicationId = application.Id,
                     message = "VeriScan Webhook 连接测试"
                 }
             },

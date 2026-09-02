@@ -138,6 +138,7 @@ public sealed partial class WebhookPublicationWorker(
         publication.RecordSubmissionAttempt(attemptedAt);
         var receipt = await provider.PublishAsync(
             publication.ProviderApplicationId,
+            publication.ProviderEndpointId,
             publication.Id,
             publication.EventType,
             publication.PayloadJson,

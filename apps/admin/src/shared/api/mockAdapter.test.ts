@@ -128,6 +128,17 @@ describe('MockApiClient Webhook 生命周期', () => {
     });
     expect(enabled.enabled).toBe(true);
 
+    const moved = await client.put<ApplicationWebhookSaved>('/applications/app-travel/webhook', {
+      endpointUrl: 'https://example.com/veriscan/moved',
+    });
+    expect(moved.signingSecret).toMatch(/^whsec_[A-Za-z0-9_-]+$/);
+    expect(moved.signingSecret).not.toBe(saved.signingSecret);
+    expect(moved.webhook).toMatchObject({
+      enabled: false,
+      revision: 2,
+      currentRevisionTested: false,
+    });
+
     const rotated = await client.post<{ signingSecret: string }>(
       '/applications/app-travel/webhook/secret/rotate',
     );

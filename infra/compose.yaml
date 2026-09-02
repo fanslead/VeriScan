@@ -9,13 +9,18 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-veriscan}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?请复制 infra/.env.example 为 infra/.env 并设置本地开发密码}
       POSTGRES_KEYCLOAK_DB: ${POSTGRES_KEYCLOAK_DB:-veriscan_keycloak}
+      POSTGRES_SVIX_DB: ${POSTGRES_SVIX_DB:-veriscan_svix}
     ports:
       - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./postgres/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready --username=$${POSTGRES_USER} --dbname=$${POSTGRES_DB}"]
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready --username=$${POSTGRES_USER} --dbname=$${POSTGRES_DB}",
+        ]
       interval: 5s
       timeout: 5s
       retries: 12
@@ -37,11 +42,43 @@ services:
     volumes:
       - redis_data:/data
     healthcheck:
-      test: ["CMD-SHELL", "redis-cli -a \"$${REDIS_PASSWORD}\" ping 2>/dev/null | grep -q PONG"]
+      test:
+        [
+          "CMD-SHELL",
+          'redis-cli -a "$${REDIS_PASSWORD}" ping 2>/dev/null | grep -q PONG',
+        ]
       interval: 5s
       timeout: 5s
       retries: 12
       start_period: 5s
+    networks:
+      - backend
+
+  svix:
+    image: svix/svix-server:v1.101.0
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      WAIT_FOR: "true"
+      SVIX_ENVIRONMENT: dev
+      SVIX_LOG_FORMAT: json
+      SVIX_DB_DSN: postgresql://${POSTGRES_USER:-veriscan}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_SVIX_DB:-veriscan_svix}
+      SVIX_REDIS_DSN: redis://:${REDIS_PASSWORD}@redis:6379/1
+      SVIX_QUEUE_TYPE: redis
+      SVIX_CACHE_TYPE: redis
+      SVIX_ENDPOINT_HTTPS_ONLY: "true"
+      SVIX_MAIN_SECRET: ${SVIX_MAIN_SECRET:?请在 infra/.env 中设置稳定且不可轮换的 SVIX_MAIN_SECRET}
+      SVIX_JWT_SECRET: ${SVIX_JWT_SECRET:?请在 infra/.env 中设置 SVIX_JWT_SECRET}
+    healthcheck:
+      test: ["CMD-SHELL", "svix-server healthcheck http://127.0.0.1:8071"]
+      interval: 5s
+      timeout: 5s
+      retries: 24
+      start_period: 10s
     networks:
       - backend
 
@@ -114,6 +151,9 @@ services:
       Authentication__Admin__RequireHttpsMetadata: "false"
       ExternalAi__AllowedHosts__0: ${EXTERNAL_AI_ALLOWED_HOST_0:-api.openai.com}
       ExternalAi__AllowedHosts__1: ${EXTERNAL_AI_ALLOWED_HOST_1:-api.anthropic.com}
+      WebhookProvider__Enabled: "true"
+      WebhookProvider__ServerUrl: http://svix:8071
+      WebhookProvider__AuthToken: ${SVIX_AUTH_TOKEN:?请在 infra/.env 中设置由当前 SVIX_JWT_SECRET 生成的 SVIX_AUTH_TOKEN}
     volumes:
       - content_protection_keys:/var/lib/veriscan/keys
     networks:
