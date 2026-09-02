@@ -90,6 +90,28 @@ public sealed partial class SvixWebhookProvider(
         }
 
         string? signingSecret = null;
+        if (revealSecret)
+        {
+            var rotated = await ExecuteAsync(
+                "endpoint_secret_initialize",
+                currentOptions,
+                (svix, token) => svix.Endpoint.RotateSecretAsync(
+                    application.Id,
+                    endpoint.Id,
+                    new EndpointSecretRotateIn
+                    {
+                        GracePeriodSeconds = checked((uint)currentOptions.SecretRotationGraceSeconds)
+                    },
+                    cancellationToken: token),
+                cancellationToken);
+            if (!rotated)
+            {
+                throw new WebhookProviderRequestException(
+                    "webhook_provider_secret_rotate_failed",
+                    "Webhook 签名密钥初始化失败。");
+            }
+        }
+
         if (revealSecret || providerEndpointRecreated)
         {
             var secret = await ExecuteAsync(
