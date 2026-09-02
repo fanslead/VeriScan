@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using VeriScan.Application.Abstractions;
 using VeriScan.Application.Contracts;
 using VeriScan.Domain.Entities;
@@ -23,6 +24,7 @@ public interface IModerationService
     Task<BatchModerationResponse> CancelBatchAsync(
         Guid requestId,
         ApiKeyPrincipalData principal,
+        string? idempotencyKey,
         CancellationToken cancellationToken);
 
     Task ProcessQueuedBatchAsync(Guid requestId, CancellationToken cancellationToken);
@@ -31,6 +33,7 @@ public interface IModerationService
 public sealed class ModerationService(
     IModerationStore moderationStore,
     IModerationJobStore moderationJobStore,
+    IModerationCancellationStore moderationCancellationStore,
     IRuleSetStore ruleSetStore,
     IRuleModerationEngine ruleModerationEngine,
     IModerationAiClient moderationAiClient,
@@ -39,12 +42,18 @@ public sealed class ModerationService(
     IModerationContentProtector contentProtector,
     IModerationExecutionPolicy executionPolicy,
     IModerationQueuePolicy queuePolicy,
+    IModerationIdempotencyPolicy idempotencyPolicy,
     IOperationalFactService operationalFactService) : IModerationService
 {
     private const int MaximumContentBytes = 64 * 1024;
     private const int HttpOkStatus = 200;
     private const int HttpAcceptedStatus = 202;
+    private const int HttpNotFoundStatus = 404;
     private const int HttpConflictStatus = 409;
+    private static readonly JsonSerializerOptions IdempotentResponseJsonOptions = new(JsonSerializerDefaults.Web)
+    {
+        Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) }
+    };
 
     public async Task<BatchModerationResponse> CreateBatchAsync(
         BatchModerationRequest request,
@@ -304,40 +313,123 @@ public sealed class ModerationService(
     public async Task<BatchModerationResponse> CancelBatchAsync(
         Guid requestId,
         ApiKeyPrincipalData principal,
+        string? idempotencyKey,
         CancellationToken cancellationToken)
     {
-        var job = await moderationJobStore.GetByRequestIdAsync(
+        var requestStopwatch = Stopwatch.StartNew();
+        var identity = ModerationCancellationIdentity.Create(
             principal.ApplicationId,
             requestId,
-            cancellationToken)
-            ?? throw new ResourceNotFoundException("异步审核批次不存在。");
-        if (job.Status == ModerationJobStatus.Cancelled && job.Request is not null)
+            idempotencyKey,
+            idempotencyDigestService);
+        var cancelledAt = DateTimeOffset.UtcNow;
+        await using var transaction = await moderationCancellationStore.BeginAsync(cancellationToken);
+        var job = await transaction.GetJobForUpdateAsync(
+            principal.ApplicationId,
+            requestId,
+            cancellationToken);
+        if (job is null)
         {
-            return ModerationMappings.ToResponse(job.Request);
+            await RecordCancellationRequestFactAsync(
+                principal,
+                requestId,
+                itemCount: null,
+                "new_idempotent",
+                HttpNotFoundStatus,
+                requestStopwatch,
+                cancelledAt,
+                cancellationToken);
+            await transaction.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            throw new ResourceNotFoundException("异步审核批次不存在。");
+        }
+
+        var existingOperation = await transaction.GetOperationAsync(
+            principal.ApplicationId,
+            requestId,
+            ModerationCancellationIdentity.Operation,
+            identity.IdempotencyKeyDigest,
+            cancelledAt,
+            cancellationToken);
+        if (existingOperation is not null)
+        {
+            if (!string.Equals(
+                    existingOperation.OperationFingerprint,
+                    identity.OperationFingerprint,
+                    StringComparison.Ordinal))
+            {
+                await RecordCancellationRequestFactAsync(
+                    principal,
+                    requestId,
+                    job.Request?.Items.Count,
+                    "conflict",
+                    HttpConflictStatus,
+                    requestStopwatch,
+                    cancelledAt,
+                    cancellationToken);
+                await transaction.SaveChangesAsync(cancellationToken);
+                await transaction.CommitAsync(cancellationToken);
+                throw new RequestConflictException("相同 Idempotency-Key 已用于不同的取消请求。");
+            }
+
+            await RecordCancellationRequestFactAsync(
+                principal,
+                requestId,
+                job.Request?.Items.Count,
+                "replay",
+                existingOperation.HttpStatusCode,
+                requestStopwatch,
+                cancelledAt,
+                cancellationToken);
+            await transaction.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            return JsonSerializer.Deserialize<BatchModerationResponse>(
+                    existingOperation.ResponseSnapshot,
+                    IdempotentResponseJsonOptions)
+                ?? throw new InvalidOperationException("取消操作的幂等响应快照无效。");
         }
 
         if (job.Status is not (ModerationJobStatus.Pending or ModerationJobStatus.RetryWait) ||
             job.Request is null)
         {
+            await RecordCancellationRequestFactAsync(
+                principal,
+                requestId,
+                job.Request?.Items.Count,
+                "conflict",
+                HttpConflictStatus,
+                requestStopwatch,
+                cancelledAt,
+                cancellationToken);
+            await transaction.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
             throw new RequestConflictException("审核批次已经开始或已终结，无法取消。");
         }
 
-        var cancelledAt = DateTimeOffset.UtcNow;
         job.Cancel(cancelledAt);
         job.Request.Cancel(cancelledAt);
-        await operationalFactService.RecordApiRequestAsync(
-            new ApiRequestMeasurement(
-                job.Request.TenantId,
-                job.Request.ApplicationId,
-                principal.KeyId,
-                job.Request.Id,
-                "/api/v1/moderation/batches/{requestId}/cancel",
-                "authenticated",
-                "cancel",
-                HttpOkStatus,
-                job.Request.Items.Count,
-                null,
-                cancelledAt),
+        var response = ModerationMappings.ToResponse(job.Request);
+        var responseSnapshot = JsonSerializer.Serialize(response, IdempotentResponseJsonOptions);
+        var operation = new IdempotentOperation(
+            job.Request.TenantId,
+            job.Request.ApplicationId,
+            job.Request.Id,
+            ModerationCancellationIdentity.Operation,
+            identity.IdempotencyKeyDigest,
+            identity.OperationFingerprint,
+            HttpOkStatus,
+            responseSnapshot,
+            cancelledAt,
+            cancelledAt.Add(idempotencyPolicy.OperationRetention));
+        await transaction.AddOperationAsync(operation, cancellationToken);
+        await RecordCancellationRequestFactAsync(
+            principal,
+            requestId,
+            job.Request.Items.Count,
+            "new_idempotent",
+            HttpOkStatus,
+            requestStopwatch,
+            cancelledAt,
             cancellationToken);
         var payload = OperationalFactPayloads.Moderation(
             job.Request,
@@ -355,8 +447,35 @@ public sealed class ModerationService(
                 payload,
                 cancelledAt),
             cancellationToken);
-        await moderationJobStore.SaveChangesAsync(cancellationToken);
-        return ModerationMappings.ToResponse(job.Request);
+        await transaction.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return response;
+    }
+
+    private Task RecordCancellationRequestFactAsync(
+        ApiKeyPrincipalData principal,
+        Guid requestId,
+        int? itemCount,
+        string idempotencyOutcome,
+        int httpStatusCode,
+        Stopwatch requestStopwatch,
+        DateTimeOffset occurredAt,
+        CancellationToken cancellationToken)
+    {
+        return operationalFactService.RecordApiRequestAsync(
+            new ApiRequestMeasurement(
+                principal.TenantId,
+                principal.ApplicationId,
+                principal.KeyId,
+                requestId,
+                "/api/v1/moderation/batches/{requestId}/cancel",
+                "authenticated",
+                idempotencyOutcome,
+                httpStatusCode,
+                itemCount,
+                Math.Max(0, requestStopwatch.ElapsedMilliseconds),
+                occurredAt),
+            cancellationToken);
     }
 
     private async Task ExecuteAsync(

@@ -2,6 +2,7 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
 using VeriScan.Api.Authentication;
+using VeriScan.Application.Abstractions;
 using VeriScan.Application.Contracts;
 using VeriScan.Application.Services;
 
@@ -53,22 +54,33 @@ public static class ModerationEndpoints
 
         group.MapPost("/batches/{requestId:guid}/cancel", async (
                 Guid requestId,
+                [FromHeader(Name = "Idempotency-Key")] string? idempotencyKey,
                 ClaimsPrincipal user,
                 IModerationService service,
+                HttpRequest httpRequest,
                 CancellationToken cancellationToken) =>
             {
+                if (!httpRequest.Headers.TryGetValue("Idempotency-Key", out var idempotencyKeys) ||
+                    idempotencyKeys.Count != 1)
+                {
+                    throw new RequestValidationException(
+                        "取消审核批次必须提供且只能提供一个 Idempotency-Key。");
+                }
+
                 var principal = user.GetApiKeyPrincipal();
                 var response = await service.CancelBatchAsync(
                     requestId,
                     principal,
+                    idempotencyKey,
                     cancellationToken);
                 return TypedResults.Ok(response);
             })
             .RequireAuthorization(ApiKeyAuthenticationDefaults.SubmitPolicy)
             .WithName("CancelModerationBatch")
             .WithSummary("取消尚未开始的异步审核批次")
-            .WithDescription("只取消仍处于 accepted 或 retry_wait 状态的项目；已经开始或终结的批次返回状态冲突。")
+            .WithDescription("必须提供唯一的 Idempotency-Key；只取消仍处于 accepted 或 retry_wait 状态的项目，同键重放返回首次响应，已经开始或终结的批次返回状态冲突。")
             .Produces<BatchModerationResponse>(StatusCodes.Status200OK)
+            .ProducesProblem(StatusCodes.Status400BadRequest)
             .ProducesProblem(StatusCodes.Status401Unauthorized)
             .ProducesProblem(StatusCodes.Status403Forbidden)
             .ProducesProblem(StatusCodes.Status404NotFound)

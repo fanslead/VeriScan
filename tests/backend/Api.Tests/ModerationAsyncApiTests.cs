@@ -110,6 +110,7 @@ public sealed class ModerationAsyncApiTests
             HttpMethod.Post,
             $"/api/v1/moderation/batches/{submitted.RequestId}/cancel",
             apiKey);
+        cancel.Headers.Add("Idempotency-Key", "cancel-pending-batch-0001");
         var cancelResponse = await client.SendAsync(cancel);
         var cancelled = await ReadResponseAsync<BatchModerationResponse>(cancelResponse);
 

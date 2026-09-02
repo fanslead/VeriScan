@@ -93,8 +93,8 @@ public sealed class UsageProjectionStore(VeriScanDbContext dbContext) : IUsagePr
                 requestEvent.ApplicationId == applicationId &&
                 requestEvent.OccurredAt >= fromValue &&
                 requestEvent.OccurredAt < throughValue &&
-                requestEvent.IdempotencyOutcome != "new" &&
-                requestEvent.IdempotencyOutcome != "new_idempotent" &&
+                (requestEvent.IdempotencyOutcome == "replay" ||
+                 requestEvent.IdempotencyOutcome == "reservation_race_replay") &&
                 requestEvent.ApiKeyId.HasValue &&
                 (apiKeyId == null || requestEvent.ApiKeyId == apiKeyId))
             .Select(requestEvent => new ReplayFact(

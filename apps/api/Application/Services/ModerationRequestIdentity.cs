@@ -9,9 +9,6 @@ internal sealed record ModerationRequestIdentity(
     string? IdempotencyKeyDigest,
     string RequestFingerprint)
 {
-    private const int MinimumKeyLength = 16;
-    private const int MaximumKeyLength = 128;
-
     public static ModerationRequestIdentity Create(
         Guid applicationId,
         string? idempotencyKey,
@@ -19,31 +16,13 @@ internal sealed record ModerationRequestIdentity(
         string effectivePolicyId,
         IIdempotencyDigestService digestService)
     {
-        var normalizedKey = ValidateKey(idempotencyKey);
+        var normalizedKey = IdempotencyKeyPolicy.ValidateOptional(idempotencyKey);
         var digest = normalizedKey is null
             ? null
             : digestService.Compute($"{applicationId:N}\0{normalizedKey}");
         return new ModerationRequestIdentity(
             digest,
             ComputeFingerprint(request, effectivePolicyId, digestService));
-    }
-
-    private static string? ValidateKey(string? idempotencyKey)
-    {
-        if (idempotencyKey is null)
-        {
-            return null;
-        }
-
-        if (idempotencyKey.Length is < MinimumKeyLength or > MaximumKeyLength ||
-            idempotencyKey.Any(character =>
-                !char.IsAsciiLetterOrDigit(character) && character is not '.' and not '_' and not ':' and not '-'))
-        {
-            throw new RequestValidationException(
-                "Idempotency-Key 必须为 16 到 128 位，仅可包含 ASCII 字母、数字、点、下划线、冒号或连字符。");
-        }
-
-        return idempotencyKey;
     }
 
     private static string ComputeFingerprint(

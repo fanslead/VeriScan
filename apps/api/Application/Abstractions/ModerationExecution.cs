@@ -25,3 +25,9 @@ public interface IModerationQueuePolicy
 
     TimeSpan GetRetryDelay(int attemptCount);
 }
+
+/// <summary>审核写操作的幂等保留策略。</summary>
+public interface IModerationIdempotencyPolicy
+{
+    TimeSpan OperationRetention { get; }
+}

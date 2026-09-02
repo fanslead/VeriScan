@@ -23,6 +23,9 @@
   <Folder Name="/tests/backend/Api.Tests/">
     <Project Path="tests/backend/Api.Tests/Api.Tests.csproj" />
   </Folder>
+  <Folder Name="/tests/backend/Api.PostgresTests/">
+    <Project Path="tests/backend/Api.PostgresTests/Api.PostgresTests.csproj" />
+  </Folder>
   <Folder Name="/tests/performance/" />
   <Folder Name="/tests/performance/RuleEngine.Baseline/">
     <Project Path="tests/performance/RuleEngine.Baseline/RuleEngine.Baseline.csproj" />

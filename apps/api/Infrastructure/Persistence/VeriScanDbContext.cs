@@ -15,6 +15,8 @@ public sealed class VeriScanDbContext(DbContextOptions<VeriScanDbContext> option
 
     public DbSet<ModerationJob> ModerationJobs => Set<ModerationJob>();
 
+    public DbSet<IdempotentOperation> IdempotentOperations => Set<IdempotentOperation>();
+
     public DbSet<WordRule> WordRules => Set<WordRule>();
 
     public DbSet<RegexRule> RegexRules => Set<RegexRule>();

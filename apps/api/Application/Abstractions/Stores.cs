@@ -81,6 +81,37 @@ public interface IModerationJobStore
     Task SaveChangesAsync(CancellationToken cancellationToken);
 }
 
+/// <summary>取消操作的数据库事务，固定先锁任务、再读取幂等记录。</summary>
+public interface IModerationCancellationTransaction : IAsyncDisposable
+{
+    Task<ModerationJob?> GetJobForUpdateAsync(
+        Guid applicationId,
+        Guid requestId,
+        CancellationToken cancellationToken);
+
+    Task<IdempotentOperation?> GetOperationAsync(
+        Guid applicationId,
+        Guid requestId,
+        string operation,
+        string idempotencyKeyDigest,
+        DateTimeOffset now,
+        CancellationToken cancellationToken);
+
+    Task AddOperationAsync(
+        IdempotentOperation operation,
+        CancellationToken cancellationToken);
+
+    Task SaveChangesAsync(CancellationToken cancellationToken);
+
+    Task CommitAsync(CancellationToken cancellationToken);
+}
+
+/// <summary>建立取消操作的原子事务边界。</summary>
+public interface IModerationCancellationStore
+{
+    Task<IModerationCancellationTransaction> BeginAsync(CancellationToken cancellationToken);
+}
+
 public interface IRuleSetStore
 {
     Task AddAsync(RuleSetVersion ruleSet, CancellationToken cancellationToken);

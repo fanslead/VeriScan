@@ -62,6 +62,10 @@ public static class InfrastructureServiceCollectionExtensions
             .Bind(configuration.GetSection(ModerationQueueOptions.SectionName))
             .ValidateDataAnnotations()
             .ValidateOnStart();
+        services.AddOptions<ModerationIdempotencyOptions>()
+            .Bind(configuration.GetSection(ModerationIdempotencyOptions.SectionName))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
         services.AddOptions<ModerationDigestOptions>()
             .Bind(configuration.GetSection(ModerationDigestOptions.SectionName))
             .ValidateDataAnnotations()
@@ -76,6 +80,7 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddScoped<IApiKeyStore, ApiKeyStore>();
         services.AddScoped<IModerationStore, ModerationStore>();
         services.AddScoped<IModerationJobStore, ModerationJobStore>();
+        services.AddScoped<IModerationCancellationStore, ModerationCancellationStore>();
         services.AddScoped<IAdminReadStore, AdminReadStore>();
         services.AddScoped<IApplicationUsageStore, ApplicationUsageStore>();
         services.AddScoped<IUsageProjectionStore, UsageProjectionStore>();
@@ -94,6 +99,7 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddSingleton<IIdempotencyDigestService, IdempotencyDigestService>();
         services.AddSingleton<IModerationContentProtector, DataProtectionContentProtector>();
         services.AddSingleton<IModerationQueuePolicy, ModerationQueuePolicy>();
+        services.AddSingleton<IModerationIdempotencyPolicy, ModerationIdempotencyPolicy>();
         services.AddScoped<DatabaseInitializer>();
         return services;
     }
