@@ -172,13 +172,14 @@ curl --request POST \
 
 An API key can read records only for its own application. `/healthz` is the liveness endpoint; `/readyz` verifies PostgreSQL connectivity and pending migrations.
 
-## Load test results (2026-09-01)
+## Load test results (2026-09-02)
 
 ### Environment and scope
 
 - Apple M1 Max, 10 logical processors, 64 GB RAM, Docker Desktop.
 - .NET 10.0.11, PostgreSQL 16.10, Redis 7.4.5.
-- The API ran with Development / Information logging; application and EF SQL logs reduce throughput.
+- Only PostgreSQL and Redis ran in Docker. The API ran as a local Release process with the Production environment and Warning logging, avoiding API-container scheduling effects.
+- PostgreSQL and Redis were exposed on loopback ports `35432` and `36379`. The load used 4 temporary applications and 16 API keys in round-robin order while retaining the default rate limits.
 - HTTP figures are client-observed end-to-end results including API-key validation, JSON, rule evaluation, Redis / PostgreSQL, and moderation-record persistence.
 - No external AI provider was active, so these results do not measure provider latency, provider rate limits, or real model throughput.
 
@@ -197,18 +198,19 @@ An API key can read records only for its own application. `/healthz` is the live
 
 This baseline measures only in-process rule evaluation. It excludes HTTP, databases, authentication, AI, and network latency.
 
-### Current HTTP baseline
+### Local-API HTTP baseline
 
-These measurements were taken from the isolated Compose stack after adding ingress protection. Each request contains one trusted hard reject and includes API-key authentication, JSON, PostgreSQL persistence, Outbox, and operational-fact writes:
+The harness first sent 200 warm-up requests. Each stable profile then ran three times; the table reports the run with median successful throughput. Every request persisted records to PostgreSQL and produced Outbox and operational facts:
 
-| Profile                          | Requests | Concurrency | Client throughput | Client P95 |      P99 | Outcome                              |
-| -------------------------------- | -------: | ----------: | ----------------: | ---------: | -------: | ------------------------------------ |
-| Stable baseline                  |      100 |          16 |      817.01 req/s |   24.71 ms | 25.17 ms | 100 HTTP 200, zero errors            |
-| Multi-app burst overload         |    1,200 |         128 | 901.25 attempts/s | rate-limited |        — | 270 HTTP 200, 930 HTTP 429, no client errors |
+| Profile                  | Requests × items | Concurrency |                     Successful throughput | Client P95 |       P99 | Outcome                                         |
+| ------------------------ | ---------------: | ----------: | ----------------------------------------: | ---------: | --------: | ----------------------------------------------- |
+| Trusted hard reject      |        1,920 × 1 |          32 |                       1,066.64 requests/s |   43.39 ms |  51.53 ms | 1,920 HTTP 200, zero errors                     |
+| Mixed rule batch         |         480 × 10 |          16 |        627.60 batches/s; 6,275.96 items/s |   35.88 ms |  39.79 ms | 480 HTTP 200; 4,320 reject and 480 review       |
+| Multi-app burst overload |        2,400 × 1 |         128 | 4,542.45 attempts/s; 1,075.05 successes/s |   73.81 ms | 140.90 ms | 568 HTTP 200, 1,832 HTTP 429, no network errors |
 
-The overload profile verifies protection semantics; it is not a successful-throughput score. After the run, the API container remained healthy with zero restarts and `/readyz` still returned HTTP 200. The global ingress gate rejects excess work before authentication, while authenticated global, application, and API-key token-bucket and concurrency limits still return `Retry-After` and `RateLimit-*` headers.
+The burst latency combines successful responses with fast 429 responses and therefore is only protection evidence, not successful-request latency or capacity. The local API remained alive and both `/healthz` and `/readyz` returned HTTP 200 afterward. The unpublished Outbox backlog briefly reached 536 and drained to zero within three seconds. Ingress, global, application, and API-key limits remained at their defaults.
 
-Without an active AI configuration, unresolved rule outcomes conservatively become `review`, so these figures exclude provider network latency. The proposal's 1,500 item/s figure remains a stretch target that requires fixed resources, representative traffic, purchased provider capacity, and at least three 60-minute runs; this short test does not claim it is achieved.
+The local-rules path exceeded the 1,500 items/s target, but this cannot be extrapolated to AI routing, a real provider, or production resources. With no active AI configuration, unresolved rule outcomes conservatively become `review`; real-provider latency, accuracy, cost, and 60-minute soak tests remain target-environment gates.
 
 ### Reproduce
 
@@ -219,17 +221,25 @@ dotnet run --project tests/performance/RuleEngine.Baseline/RuleEngine.Baseline.c
   --configuration Release -- 10000 100000
 ```
 
-The HTTP harness persists real moderation records. Create a temporary application API key and revoke it immediately afterward. The script never prints the key:
+The HTTP harness persists real moderation records. Run only PostgreSQL and Redis in Docker, start the Release API locally with the configuration shown above, and create temporary API keys belonging to several applications. Revoke them immediately afterward; the script never prints the keys:
 
 ```bash
-VERISCAN_API_KEY='<temporary-key>' \
-node tests/performance/http-load.mjs hard 2000 32
+docker compose --env-file infra/.env -f infra/compose.yaml \
+  stop veriscan-api veriscan-admin keycloak
+docker compose --env-file infra/.env -f infra/compose.yaml \
+  up -d --wait postgres redis
 
-VERISCAN_API_KEY='<temporary-key>' \
-node tests/performance/http-load.mjs mixed 500 16
+VERISCAN_API_KEYS='<key1>,<key2>,...' \
+node tests/performance/http-load.mjs hard 1920 32
+
+VERISCAN_API_KEYS='<key1>,<key2>,...' \
+node tests/performance/http-load.mjs mixed 480 16
+
+VERISCAN_API_KEYS='<key1>,<key2>,...' \
+node tests/performance/http-load.mjs hard 2400 128
 ```
 
-Set `VERISCAN_BASE_URL` to override the default `http://127.0.0.1:5000`. Do not run this against production data.
+`VERISCAN_API_KEYS` rotates credentials per request. Spread the keys across applications so that a single key or application's quota does not hide the ingress-concurrency boundary; `VERISCAN_API_KEY` remains supported for one-key tests. An overload run exits with code 1 when expected 429 responses occur, so evaluate `statusCounts`, client errors, and the subsequent health check in the JSON output. Set `VERISCAN_BASE_URL` to override the default `http://127.0.0.1:5000`. Do not run this against production data.
 
 ## Build, test, and container images
 

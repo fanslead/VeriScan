@@ -12,11 +12,13 @@ const concurrency = readPositiveInteger(process.argv[4], 32, "concurrency");
 const baseUrl = (
   process.env.VERISCAN_BASE_URL ?? "http://127.0.0.1:5000"
 ).replace(/\/$/, "");
-const apiKey = process.env.VERISCAN_API_KEY;
+const apiKeys = readApiKeys(
+  process.env.VERISCAN_API_KEYS || process.env.VERISCAN_API_KEY,
+);
 
-if (!apiKey) {
+if (apiKeys.length === 0) {
   fail(
-    "VERISCAN_API_KEY is required. Create a temporary application key in the admin console first.",
+    "VERISCAN_API_KEY or VERISCAN_API_KEYS is required. Create temporary application keys first.",
   );
 }
 
@@ -56,6 +58,7 @@ console.log(
       baseUrl,
       requestCount,
       concurrency,
+      credentialCount: apiKeys.length,
       itemsPerRequest,
       elapsedMilliseconds: round(elapsedMilliseconds),
       attemptedRequestsPerSecond: round(
@@ -108,7 +111,7 @@ async function worker() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "X-API-Key": apiKey,
+          "X-API-Key": apiKeys[requestIndex % apiKeys.length],
         },
         body: JSON.stringify({
           mode: "sync",
@@ -200,6 +203,21 @@ function readPositiveInteger(value, fallback, name) {
   }
 
   return parsed;
+}
+
+function readApiKeys(value) {
+  if (!value) {
+    return [];
+  }
+
+  return [
+    ...new Set(
+      value
+        .split(",")
+        .map((key) => key.trim())
+        .filter(Boolean),
+    ),
+  ];
 }
 
 function round(value) {

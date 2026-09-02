@@ -172,13 +172,14 @@ curl --request POST \
 
 API Key 只能查询所属应用的记录。`/healthz` 是存活探针，`/readyz` 会实际检查 PostgreSQL 和待执行迁移。
 
-## 压测结果（2026-09-01）
+## 压测结果（2026-09-02）
 
 ### 测试环境与口径
 
 - Apple M1 Max，10 个逻辑处理器，64 GB 内存，Docker Desktop。
 - .NET 10.0.11、PostgreSQL 16.10、Redis 7.4.5。
-- API 使用 Development / Information 日志；日志与 EF SQL 输出会影响吞吐。
+- 只有 PostgreSQL 与 Redis 运行在 Docker；API 以本机 Release 进程运行，使用 Production 环境与 Warning 日志，避免 API 容器调度影响并发结果。
+- PostgreSQL、Redis 分别通过宿主机回环端口 `35432`、`36379` 访问；测试使用 4 个临时应用、16 把临时 API Key 轮询，并保留系统默认限流配置。
 - HTTP 数据为客户端端到端观测，包含 API Key 校验、JSON、规则判断、Redis / PostgreSQL 和审核记录持久化。
 - 没有启用外部 AI 供应商，因此结果不代表真实 AI 网络延迟或供应商限流能力。
 
@@ -197,18 +198,19 @@ API Key 只能查询所属应用的记录。`/healthz` 是存活探针，`/ready
 
 该基线只测进程内规则求值，不包含 HTTP、数据库、鉴权、AI 或网络。
 
-### 当前版本 HTTP 基线
+### 本机 API HTTP 基线
 
-以下是加入入口总并发保护后的隔离 Compose 实测，内容为单条可信硬拒绝，包含 API Key、JSON、PostgreSQL 持久化、Outbox 与审计事实写入：
+先执行 200 请求预热；稳定场景各运行 3 次，表中取成功吞吐中位数。每个请求均真实写入 PostgreSQL，并产生 Outbox 与运行事实：
 
-| 场景                   | 请求量 | 并发 | 客户端吞吐      | 客户端 P95 |      P99 | 结果                         |
-| ---------------------- | -----: | ---: | ---------------: | ---------: | -------: | ---------------------------- |
-| 稳定基线               |    100 |   16 | 817.01 请求/秒   |   24.71 ms | 25.17 ms | 100 个 HTTP 200，0 错误      |
-| 突发过载保护（多应用） |  1,200 |  128 | 901.25 尝试/秒   |   受限流影响 |        — | 270 个 200，930 个 429，0 客户端错误 |
+| 场景                   | 请求量 × 条目 | 并发 |                           成功吞吐 | 客户端 P95 |       P99 | 结果                                      |
+| ---------------------- | ------------: | ---: | ---------------------------------: | ---------: | --------: | ----------------------------------------- |
+| 单条可信硬拒绝         |     1,920 × 1 |   32 |                1,066.64 请求/条/秒 |   43.39 ms |  51.53 ms | 1,920 个 HTTP 200，0 错误                 |
+| 混合规则批次           |      480 × 10 |   16 |     627.60 批次/秒；6,275.96 条/秒 |   35.88 ms |  39.79 ms | 480 个 HTTP 200；4,320 拒绝、480 建议复核 |
+| 突发过载保护（多应用） |     2,400 × 1 |  128 | 4,542.45 尝试/秒；1,075.05 成功/秒 |   73.81 ms | 140.90 ms | 568 个 200、1,832 个 429，0 网络错误      |
 
-过载场景用于验证保护语义，不是成功吞吐成绩。测试后 API 容器保持 `healthy`、重启次数为 0，`/readyz` 继续返回 200。入口总并发闸门在认证之前拒绝过载请求，认证后的全局、应用和 API Key token bucket / 并发配额继续生效，并返回 `Retry-After` 与 `RateLimit-*` Header。
+突发档的延迟包含快速返回的 429，只用于验证保护语义，不能作为成功请求延迟或容量成绩。突发结束后本机 API 仍存活，`/healthz`、`/readyz` 均返回 200；Outbox 未发布数从瞬时 536 条在 3 秒内回落到 0。入口并发闸门、全局/应用/API Key 配额均保持默认值。
 
-未配置活动 AI 时，规则未决内容保守返回 `review`，因此这些结果不包含真实模型网络延迟。技术方案中的 1,500 item/s 仍是需要固定资源、代表性流量、真实供应商配额和至少三次 60 分钟运行共同证明的伸展目标，不能由这次短测直接宣称达成。
+本机规则路径已经超过 1,500 条/秒的目标，但这不能外推到 AI 路由、真实供应商或生产资源。未配置活动 AI 时，规则未决内容会保守返回 `review`；真实 AI 延迟、准确率、费用和 60 分钟长稳仍需在目标环境验证。
 
 ### 复现命令
 
@@ -219,17 +221,25 @@ dotnet run --project tests/performance/RuleEngine.Baseline/RuleEngine.Baseline.c
   --configuration Release -- 10000 100000
 ```
 
-HTTP 压测会真实写入审核记录。请先创建临时应用 API Key，测试后立即撤销；脚本不会输出密钥：
+HTTP 压测会真实写入审核记录。仅启动 Docker 中的 PostgreSQL 与 Redis，本机按前文配置启动 Release API；请创建分属多个临时应用的 API Key，测试后立即撤销。脚本不会输出密钥：
 
 ```bash
-VERISCAN_API_KEY='<temporary-key>' \
-node tests/performance/http-load.mjs hard 2000 32
+docker compose --env-file infra/.env -f infra/compose.yaml \
+  stop veriscan-api veriscan-admin keycloak
+docker compose --env-file infra/.env -f infra/compose.yaml \
+  up -d --wait postgres redis
 
-VERISCAN_API_KEY='<temporary-key>' \
-node tests/performance/http-load.mjs mixed 500 16
+VERISCAN_API_KEYS='<key1>,<key2>,...' \
+node tests/performance/http-load.mjs hard 1920 32
+
+VERISCAN_API_KEYS='<key1>,<key2>,...' \
+node tests/performance/http-load.mjs mixed 480 16
+
+VERISCAN_API_KEYS='<key1>,<key2>,...' \
+node tests/performance/http-load.mjs hard 2400 128
 ```
 
-可用 `VERISCAN_BASE_URL` 覆盖默认的 `http://127.0.0.1:5000`。不要在生产数据环境直接运行。
+`VERISCAN_API_KEYS` 会按请求轮询，多 Key 应分散到多个应用，避免单 Key 或单应用配额掩盖入口并发边界；单 Key 测试仍可使用 `VERISCAN_API_KEY`。过载档出现预期 429 时脚本退出码为 1，应以 JSON 中的 `statusCounts`、客户端错误数和随后健康检查为准。可用 `VERISCAN_BASE_URL` 覆盖默认的 `http://127.0.0.1:5000`。不要在生产数据环境直接运行。
 
 ## 构建、测试与镜像
 
