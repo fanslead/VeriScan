@@ -142,6 +142,8 @@ builder.Services.AddSingleton<Microsoft.AspNetCore.Authorization.IAuthorizationH
 builder.Services.AddScoped<IApplicationService, ApplicationService>();
 builder.Services.AddScoped<IApiKeyService, ApiKeyService>();
 builder.Services.AddScoped<IModerationService, ModerationService>();
+builder.Services.AddScoped<IApplicationWebhookService, ApplicationWebhookService>();
+builder.Services.AddScoped<IWebhookPublicationService, WebhookPublicationService>();
 builder.Services.AddScoped<IAdminReadService, AdminReadService>();
 builder.Services.AddScoped<IApplicationUsageService, ApplicationUsageService>();
 builder.Services.AddScoped<IUsageProjectionService, UsageProjectionService>();
@@ -154,10 +156,16 @@ builder.Services.AddOptions<OutboxWorkerOptions>()
     .Bind(builder.Configuration.GetSection(OutboxWorkerOptions.SectionName))
     .ValidateDataAnnotations()
     .ValidateOnStart();
+builder.Services.AddOptions<WebhookPublicationWorkerOptions>()
+    .Bind(builder.Configuration.GetSection(WebhookPublicationWorkerOptions.SectionName))
+    .ValidateDataAnnotations()
+    .ValidateOnStart();
 builder.Services.AddVeriScanInfrastructure(builder.Configuration);
 builder.Services.AddVeriScanExternalAi(builder.Configuration);
+builder.Services.AddVeriScanWebhooks(builder.Configuration);
 builder.Services.AddHostedService<ModerationJobWorker>();
 builder.Services.AddHostedService<OutboxWorker>();
+builder.Services.AddHostedService<WebhookPublicationWorker>();
 
 var app = builder.Build();
 
@@ -214,6 +222,7 @@ app.MapHealthChecks("/readyz", new HealthCheckOptions
     .WithName("Readiness")
     .WithSummary("服务接流量就绪检查");
 app.MapApplicationEndpoints();
+app.MapApplicationWebhookEndpoints();
 app.MapApiKeyEndpoints();
 app.MapModerationEndpoints();
 app.MapAdminReadEndpoints();

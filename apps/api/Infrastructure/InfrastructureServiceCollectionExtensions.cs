@@ -81,6 +81,8 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddScoped<IModerationStore, ModerationStore>();
         services.AddScoped<IModerationJobStore, ModerationJobStore>();
         services.AddScoped<IModerationCancellationStore, ModerationCancellationStore>();
+        services.AddScoped<IApplicationWebhookStore, ApplicationWebhookStore>();
+        services.AddScoped<IWebhookPublicationStore, WebhookPublicationStore>();
         services.AddScoped<IAdminReadStore, AdminReadStore>();
         services.AddScoped<IApplicationUsageStore, ApplicationUsageStore>();
         services.AddScoped<IUsageProjectionStore, UsageProjectionStore>();

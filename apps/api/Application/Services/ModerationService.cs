@@ -28,6 +28,8 @@ public interface IModerationService
         CancellationToken cancellationToken);
 
     Task ProcessQueuedBatchAsync(Guid requestId, CancellationToken cancellationToken);
+
+    Task FinalizeDeadLetterAsync(Guid requestId, CancellationToken cancellationToken);
 }
 
 public sealed class ModerationService(
@@ -43,6 +45,7 @@ public sealed class ModerationService(
     IModerationExecutionPolicy executionPolicy,
     IModerationQueuePolicy queuePolicy,
     IModerationIdempotencyPolicy idempotencyPolicy,
+    IWebhookPublicationService webhookPublicationService,
     IOperationalFactService operationalFactService) : IModerationService
 {
     private const int MaximumContentBytes = 64 * 1024;
@@ -208,6 +211,7 @@ public sealed class ModerationService(
                 identity.IdempotencyKeyDigest is null ? "new" : "new_idempotent",
                 requestStopwatch,
                 true,
+                false,
                 deadlineSource.Token);
         }
         catch (OperationCanceledException) when (
@@ -290,6 +294,7 @@ public sealed class ModerationService(
             "async_worker",
             null,
             false,
+            true,
             cancellationToken);
     }
 
@@ -308,6 +313,44 @@ public sealed class ModerationService(
         }
 
         return ModerationMappings.ToResponse(moderationRequest);
+    }
+
+    public async Task FinalizeDeadLetterAsync(
+        Guid requestId,
+        CancellationToken cancellationToken)
+    {
+        var request = await moderationStore.GetForProcessingAsync(requestId, cancellationToken)
+            ?? throw new ResourceNotFoundException("审核批次不存在。");
+        if (request.ProcessingStatus is not (
+                ModerationProcessingStatus.CompletedWithErrors or
+                ModerationProcessingStatus.Failed))
+        {
+            throw new RequestConflictException("审核批次尚未进入可发布的失败终态。");
+        }
+
+        var eventType = request.ProcessingStatus == ModerationProcessingStatus.Failed
+            ? "moderation.failed"
+            : "moderation.completed";
+        var payload = OperationalFactPayloads.Moderation(
+            request,
+            request.ProcessingStatus == ModerationProcessingStatus.Failed
+                ? "failed"
+                : "completed_with_errors",
+            request.Items.Count,
+            request.Items.LongCount(item => item.ProviderRequestId is not null),
+            request.Items.LongCount(item => item.AiFailureCode is not null));
+        await operationalFactService.EnqueueAsync(
+            new OutboxMessage(
+                eventType,
+                "moderation_request",
+                request.Id,
+                request.TenantId,
+                request.ApplicationId,
+                payload,
+                request.FinalizedAt ?? DateTimeOffset.UtcNow),
+            cancellationToken);
+        await webhookPublicationService.EnqueueModerationTerminalAsync(request, cancellationToken);
+        await moderationStore.SaveChangesAsync(cancellationToken);
     }
 
     public async Task<BatchModerationResponse> CancelBatchAsync(
@@ -447,6 +490,9 @@ public sealed class ModerationService(
                 payload,
                 cancelledAt),
             cancellationToken);
+        await webhookPublicationService.EnqueueModerationTerminalAsync(
+            job.Request,
+            cancellationToken);
         await transaction.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return response;
@@ -485,6 +531,7 @@ public sealed class ModerationService(
         string idempotencyOutcome,
         Stopwatch? requestStopwatch,
         bool recordApiRequest,
+        bool publishWebhook,
         CancellationToken cancellationToken)
     {
         await Parallel.ForEachAsync(
@@ -603,6 +650,12 @@ public sealed class ModerationService(
                 moderationPayload,
                 request.FinalizedAt ?? DateTimeOffset.UtcNow),
             cancellationToken);
+        if (publishWebhook)
+        {
+            await webhookPublicationService.EnqueueModerationTerminalAsync(
+                request,
+                cancellationToken);
+        }
         await moderationStore.SaveChangesAsync(cancellationToken);
     }
 

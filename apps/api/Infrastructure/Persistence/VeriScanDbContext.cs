@@ -17,6 +17,10 @@ public sealed class VeriScanDbContext(DbContextOptions<VeriScanDbContext> option
 
     public DbSet<IdempotentOperation> IdempotentOperations => Set<IdempotentOperation>();
 
+    public DbSet<ApplicationWebhook> ApplicationWebhooks => Set<ApplicationWebhook>();
+
+    public DbSet<WebhookPublication> WebhookPublications => Set<WebhookPublication>();
+
     public DbSet<WordRule> WordRules => Set<WordRule>();
 
     public DbSet<RegexRule> RegexRules => Set<RegexRule>();

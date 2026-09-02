@@ -68,6 +68,7 @@ public sealed partial class ModerationJobWorker(
                 }
 
                 job.Request?.Complete(failedAt);
+                await service.FinalizeDeadLetterAsync(job.RequestId, cancellationToken);
             }
             else
             {

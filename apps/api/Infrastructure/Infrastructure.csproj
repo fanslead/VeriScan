@@ -18,6 +18,9 @@
     <PackageReference Include="Microsoft.Extensions.Options.DataAnnotations" Version="10.0.11" />
     <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="10.0.11" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
+    <PackageReference Include="Svix" Version="2.2.0" />
+    <!-- Svix 运行时依赖 Polly 7；隐藏编译资产以避免与外部 AI 使用的 Polly 8 类型冲突。 -->
+    <PackageReference Include="Polly" Version="7.2.3" ExcludeAssets="compile" />
   </ItemGroup>
 
   <ItemGroup>
